@@ -20,6 +20,12 @@ struct FeedingView: View {
     @State private var amount: String = ""
     @State private var notes: String = ""
     @State private var showingConfirmation = false
+    @State private var confirmationMessage: String = ""
+    @State private var isLogging = false
+
+    // Breast feeding manual entry
+    @State private var selectedSide: BreastSide = .left
+    @State private var manualMinutes: Double = 10
 
     var body: some View {
         NavigationView {
@@ -66,10 +72,13 @@ struct FeedingView: View {
             .sheet(isPresented: $showingBreastTimer) {
                 BreastFeedingTimerView()
             }
-            .alert("Feeding Logged", isPresented: $showingConfirmation) {
+            .alert("Success!", isPresented: $showingConfirmation) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("Feeding has been successfully recorded")
+                Text(confirmationMessage)
+            }
+            .onAppear {
+                selectedSide = dataStore.lastBreastSide
             }
         }
     }
@@ -77,27 +86,110 @@ struct FeedingView: View {
     // MARK: - Breast Feeding Section
 
     private var breastFeedingSection: some View {
-        VStack(spacing: 16) {
-            Text("Select Side")
-                .font(.headline)
-                .foregroundColor(.secondary)
+        VStack(spacing: 20) {
+            // Side selector
+            VStack(spacing: 12) {
+                Text("Select Side")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
 
-            HStack(spacing: 20) {
-                breastButton(side: .left)
-                breastButton(side: .right)
+                Picker("Side", selection: $selectedSide) {
+                    Text("Left").tag(BreastSide.left)
+                    Text("Right").tag(BreastSide.right)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+
+                if dataStore.lastBreastSide != selectedSide {
+                    Text("✓ Suggested side")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .transition(.opacity)
+                }
             }
 
+            // Manual time entry
+            VStack(spacing: 12) {
+                Text("Duration: \(Int(manualMinutes)) minutes")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+
+                HStack(spacing: 16) {
+                    Button(action: {
+                        if manualMinutes > 1 {
+                            manualMinutes -= 1
+                            hapticFeedback()
+                        }
+                    }) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(.blue)
+                    }
+
+                    Slider(value: $manualMinutes, in: 1...60, step: 1)
+                        .tint(.blue)
+
+                    Button(action: {
+                        if manualMinutes < 60 {
+                            manualMinutes += 1
+                            hapticFeedback()
+                        }
+                    }) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(.blue)
+                    }
+                }
+                .padding(.horizontal)
+
+                // Quick time buttons
+                HStack(spacing: 12) {
+                    quickTimeButton(minutes: 5)
+                    quickTimeButton(minutes: 10)
+                    quickTimeButton(minutes: 15)
+                    quickTimeButton(minutes: 20)
+                }
+                .padding(.horizontal)
+            }
+
+            // Log button
+            Button(action: {
+                logBreastFeeding(side: selectedSide, duration: manualMinutes * 60)
+            }) {
+                HStack(spacing: 12) {
+                    if isLogging {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Log \(selectedSide.displayName) Breast - \(Int(manualMinutes)) min")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(isLogging ? Color.gray : Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(12)
+            }
+            .padding(.horizontal)
+            .disabled(isLogging)
+
+            // Divider
+            Divider()
+                .padding(.vertical, 8)
+
+            // Timer option
             Button(action: {
                 showingBreastTimer = true
             }) {
                 HStack {
                     Image(systemName: "timer")
-                    Text("Use Timer")
+                    Text("Use Live Timer Instead")
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color.blue.opacity(0.1))
-                .foregroundColor(.blue)
+                .background(Color.green.opacity(0.1))
+                .foregroundColor(.green)
                 .cornerRadius(12)
             }
             .padding(.horizontal)
@@ -105,36 +197,20 @@ struct FeedingView: View {
         .padding()
     }
 
-    private func breastButton(side: BreastSide) -> some View {
+    private func quickTimeButton(minutes: Int) -> some View {
         Button(action: {
-            logBreastFeeding(side: side, duration: 600) // Default 10 min
+            manualMinutes = Double(minutes)
+            hapticFeedback()
         }) {
-            VStack(spacing: 12) {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 40))
-                Text(side.displayName)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                Text("Quick Log")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                // Show suggestion if this is the recommended side
-                if dataStore.lastBreastSide == (side == .left ? .right : .left) {
-                    Text("Suggested")
-                        .font(.caption2)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.green.opacity(0.2))
-                        .foregroundColor(.green)
-                        .cornerRadius(4)
-                }
-            }
-            .frame(width: 160, height: 160)
-            .background(Color(.systemGray6))
-            .cornerRadius(16)
+            Text("\(minutes)m")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(manualMinutes == Double(minutes) ? Color.blue : Color(.systemGray5))
+                .foregroundColor(manualMinutes == Double(minutes) ? .white : .primary)
+                .cornerRadius(8)
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Bottle Feeding Section
@@ -204,19 +280,34 @@ struct FeedingView: View {
     // MARK: - Logging Functions
 
     private func logBreastFeeding(side: BreastSide, duration: TimeInterval) {
+        isLogging = true
+        hapticSuccess()
+
         let entry = FeedingEntry(
             type: .breastFeeding,
             side: side,
             duration: duration,
             notes: notes.isEmpty ? nil : notes
         )
-        dataStore.addFeeding(entry)
-        clearForm()
-        showingConfirmation = true
+
+        // Simulate brief delay for better UX
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            dataStore.addFeeding(entry)
+            isLogging = false
+            confirmationMessage = "Logged \(side.displayName) breast feeding for \(Int(duration/60)) minutes"
+            showingConfirmation = true
+            clearForm()
+
+            // Update suggested side for next time
+            selectedSide = dataStore.lastBreastSide
+        }
     }
 
     private func logBottleFeeding() {
         guard let amountValue = Double(amount) else { return }
+
+        isLogging = true
+        hapticSuccess()
 
         let entry = FeedingEntry(
             type: .bottleFeeding,
@@ -224,13 +315,21 @@ struct FeedingView: View {
             amount: amountValue,
             notes: notes.isEmpty ? nil : notes
         )
-        dataStore.addFeeding(entry)
-        clearForm()
-        showingConfirmation = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            dataStore.addFeeding(entry)
+            isLogging = false
+            confirmationMessage = "Logged bottle feeding: \(String(format: "%.1f", amountValue)) oz"
+            showingConfirmation = true
+            clearForm()
+        }
     }
 
     private func logFormulaFeeding() {
         guard let amountValue = Double(amount) else { return }
+
+        isLogging = true
+        hapticSuccess()
 
         let entry = FeedingEntry(
             type: .formulaFeeding,
@@ -238,14 +337,31 @@ struct FeedingView: View {
             amount: amountValue,
             notes: notes.isEmpty ? nil : notes
         )
-        dataStore.addFeeding(entry)
-        clearForm()
-        showingConfirmation = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            dataStore.addFeeding(entry)
+            isLogging = false
+            confirmationMessage = "Logged formula feeding: \(String(format: "%.1f", amountValue)) oz"
+            showingConfirmation = true
+            clearForm()
+        }
     }
 
     private func clearForm() {
         amount = ""
         notes = ""
+    }
+
+    // MARK: - Haptic Feedback
+
+    private func hapticFeedback() {
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
+    }
+
+    private func hapticSuccess() {
+        let notification = UINotificationFeedbackGenerator()
+        notification.notificationOccurred(.success)
     }
 }
 
