@@ -12,6 +12,8 @@ struct DiaperView: View {
     @State private var notes: String = ""
     @State private var showingConfirmation = false
     @State private var lastLoggedType: ActivityType?
+    @State private var isLogging = false
+    @State private var confirmationMessage: String = ""
 
     var body: some View {
         NavigationView {
@@ -66,11 +68,30 @@ struct DiaperView: View {
                 .padding(.vertical)
             }
             .navigationTitle("Diaper Change")
-            .alert("Diaper Change Logged", isPresented: $showingConfirmation) {
+            .alert("Success!", isPresented: $showingConfirmation) {
                 Button("OK", role: .cancel) { }
             } message: {
-                if let type = lastLoggedType {
-                    Text("\(type.displayName) has been successfully recorded")
+                Text(confirmationMessage)
+            }
+            .overlay {
+                if isLogging {
+                    ZStack {
+                        Color.black.opacity(0.3)
+                            .ignoresSafeArea()
+
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(1.5)
+
+                            Text("Logging...")
+                                .foregroundColor(.white)
+                                .fontWeight(.medium)
+                        }
+                        .padding(32)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(16)
+                    }
                 }
             }
         }
@@ -116,15 +137,36 @@ struct DiaperView: View {
     // MARK: - Logging Function
 
     private func logDiaperChange(type: ActivityType) {
-        let entry = DiaperEntry(
-            type: type,
-            notes: notes.isEmpty ? nil : notes
-        )
-        dataStore.addDiaper(entry)
+        // Prevent double taps
+        guard !isLogging else { return }
 
+        isLogging = true
         lastLoggedType = type
-        notes = ""
-        showingConfirmation = true
+
+        // Haptic feedback
+        let notification = UINotificationFeedbackGenerator()
+        notification.notificationOccurred(.success)
+
+        // Brief delay for better UX
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            let entry = DiaperEntry(
+                type: type,
+                notes: notes.isEmpty ? nil : notes
+            )
+            dataStore.addDiaper(entry)
+
+            isLogging = false
+            confirmationMessage = "\(type.displayName) has been successfully recorded"
+            showingConfirmation = true
+            notes = ""
+        }
+    }
+
+    // MARK: - Haptic Feedback
+
+    private func hapticSuccess() {
+        let notification = UINotificationFeedbackGenerator()
+        notification.notificationOccurred(.success)
     }
 }
 

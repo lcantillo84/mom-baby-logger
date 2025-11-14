@@ -46,19 +46,6 @@ struct HistoryView: View {
                 }
             }
             .navigationTitle("History")
-            .toolbar {
-                if !dataStore.entries.isEmpty {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Menu {
-                            Button(action: {}) {
-                                Label("Export Data", systemImage: "square.and.arrow.up")
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                        }
-                    }
-                }
-            }
         }
     }
 

@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var showingDeleteConfirmation = false
     @State private var deleteTimeframe: DeleteTimeframe = .all
     @State private var showingExportView = false
+    @State private var showingDeleteSuccess = false
+    @State private var deletedCount = 0
 
     enum DeleteTimeframe: String, CaseIterable {
         case today = "Today"
@@ -54,6 +56,7 @@ struct SettingsView: View {
                             Text("Delete Data")
                         }
                     }
+                    .disabled(dataStore.entries.isEmpty)
                 }
 
                 // App Info Section
@@ -95,6 +98,11 @@ struct SettingsView: View {
             .sheet(isPresented: $showingExportView) {
                 ExportView()
             }
+            .alert("Data Deleted", isPresented: $showingDeleteSuccess) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Successfully deleted \(deletedCount) \(deletedCount == 1 ? "entry" : "entries")")
+            }
         }
     }
 
@@ -103,6 +111,13 @@ struct SettingsView: View {
     private func performDelete() {
         let calendar = Calendar.current
         let now = Date()
+
+        // Count entries before deletion
+        let beforeCount = dataStore.entries.count
+
+        // Haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
 
         switch deleteTimeframe {
         case .today:
@@ -122,6 +137,17 @@ struct SettingsView: View {
 
         case .all:
             dataStore.deleteAllEntries()
+        }
+
+        // Count entries after deletion
+        let afterCount = dataStore.entries.count
+        deletedCount = beforeCount - afterCount
+
+        // Success feedback
+        if deletedCount > 0 {
+            let notification = UINotificationFeedbackGenerator()
+            notification.notificationOccurred(.success)
+            showingDeleteSuccess = true
         }
     }
 }
