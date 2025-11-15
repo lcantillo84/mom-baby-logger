@@ -88,11 +88,25 @@ class DataStore: ObservableObject {
         entries.removeAll { entry in
             entry.timestamp >= startDate && entry.timestamp <= endDate
         }
+
+        // If no feeding entries left, reset breast side to default
+        let hasFeedings = entries.contains { entry in
+            if case .feeding = entry {
+                return true
+            }
+            return false
+        }
+
+        if !hasFeedings {
+            lastBreastSide = .left
+        }
+
         saveData()
     }
 
     func deleteAllEntries() {
         entries.removeAll()
+        lastBreastSide = .left // Reset to default
         saveData()
     }
 

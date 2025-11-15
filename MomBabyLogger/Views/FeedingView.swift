@@ -87,6 +87,51 @@ struct FeedingView: View {
 
     private var breastFeedingSection: some View {
         VStack(spacing: 20) {
+            // Recommendation banner
+            if hasFeedingHistory {
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.blue)
+                        Text("Last used: \(oppositeOf(dataStore.lastBreastSide).displayName) breast")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Try: \(dataStore.lastBreastSide.displayName) breast")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.green)
+                        Spacer()
+                    }
+                    .padding()
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                }
+                .padding(.top)
+            } else {
+                // First time message
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(.blue)
+                    Text("Start with either breast - the app will track which one to use next")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .padding()
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(12)
+                .padding(.horizontal)
+                .padding(.top)
+            }
+
             // Side selector
             VStack(spacing: 12) {
                 Text("Select Side")
@@ -100,11 +145,21 @@ struct FeedingView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
 
-                if dataStore.lastBreastSide != selectedSide {
-                    Text("✓ Suggested side")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                        .transition(.opacity)
+                // Warning if selecting same side as last
+                if dataStore.lastBreastSide == oppositeOf(selectedSide) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("Same side as last time")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.orange)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
+                    .transition(.opacity)
                 }
             }
 
@@ -362,6 +417,21 @@ struct FeedingView: View {
     private func hapticSuccess() {
         let notification = UINotificationFeedbackGenerator()
         notification.notificationOccurred(.success)
+    }
+
+    // MARK: - Helper Functions
+
+    private var hasFeedingHistory: Bool {
+        return dataStore.entries.contains { entry in
+            if case .feeding(let feedingEntry) = entry, feedingEntry.type == .breastFeeding {
+                return true
+            }
+            return false
+        }
+    }
+
+    private func oppositeOf(_ side: BreastSide) -> BreastSide {
+        return side == .left ? .right : .left
     }
 }
 
