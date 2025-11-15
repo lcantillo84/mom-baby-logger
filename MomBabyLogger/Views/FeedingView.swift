@@ -173,7 +173,6 @@ struct FeedingView: View {
                     Button(action: {
                         if manualMinutes > 1 {
                             manualMinutes -= 1
-                            hapticFeedback()
                         }
                     }) {
                         Image(systemName: "minus.circle.fill")
@@ -187,7 +186,6 @@ struct FeedingView: View {
                     Button(action: {
                         if manualMinutes < 60 {
                             manualMinutes += 1
-                            hapticFeedback()
                         }
                     }) {
                         Image(systemName: "plus.circle.fill")
@@ -255,7 +253,6 @@ struct FeedingView: View {
     private func quickTimeButton(minutes: Int) -> some View {
         Button(action: {
             manualMinutes = Double(minutes)
-            hapticFeedback()
         }) {
             Text("\(minutes)m")
                 .font(.subheadline)
@@ -336,7 +333,6 @@ struct FeedingView: View {
 
     private func logBreastFeeding(side: BreastSide, duration: TimeInterval) {
         isLogging = true
-        hapticSuccess()
 
         let entry = FeedingEntry(
             type: .breastFeeding,
@@ -362,7 +358,6 @@ struct FeedingView: View {
         guard let amountValue = Double(amount) else { return }
 
         isLogging = true
-        hapticSuccess()
 
         let entry = FeedingEntry(
             type: .bottleFeeding,
@@ -384,7 +379,6 @@ struct FeedingView: View {
         guard let amountValue = Double(amount) else { return }
 
         isLogging = true
-        hapticSuccess()
 
         let entry = FeedingEntry(
             type: .formulaFeeding,
@@ -407,17 +401,6 @@ struct FeedingView: View {
         notes = ""
     }
 
-    // MARK: - Haptic Feedback
-
-    private func hapticFeedback() {
-        let impact = UIImpactFeedbackGenerator(style: .light)
-        impact.impactOccurred()
-    }
-
-    private func hapticSuccess() {
-        let notification = UINotificationFeedbackGenerator()
-        notification.notificationOccurred(.success)
-    }
 
     // MARK: - Helper Functions
 

@@ -164,10 +164,6 @@ struct ExportView: View {
         isExporting = true
         errorMessage = nil
 
-        // Haptic feedback
-        let impact = UIImpactFeedbackGenerator(style: .light)
-        impact.impactOccurred()
-
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             // Generate content based on format
             let content: String
@@ -198,10 +194,6 @@ struct ExportView: View {
             UIPasteboard.general.string = content
 
             isExporting = false
-
-            // Success haptic
-            let notification = UINotificationFeedbackGenerator()
-            notification.notificationOccurred(.success)
 
             showingCopySuccess = true
         }

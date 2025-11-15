@@ -115,10 +115,6 @@ struct SettingsView: View {
         // Count entries before deletion
         let beforeCount = dataStore.entries.count
 
-        // Haptic feedback
-        let impact = UIImpactFeedbackGenerator(style: .medium)
-        impact.impactOccurred()
-
         switch deleteTimeframe {
         case .today:
             let start = calendar.startOfDay(for: now)
@@ -145,8 +141,6 @@ struct SettingsView: View {
 
         // Success feedback
         if deletedCount > 0 {
-            let notification = UINotificationFeedbackGenerator()
-            notification.notificationOccurred(.success)
             showingDeleteSuccess = true
         }
     }

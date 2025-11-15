@@ -143,10 +143,6 @@ struct DiaperView: View {
         isLogging = true
         lastLoggedType = type
 
-        // Haptic feedback
-        let notification = UINotificationFeedbackGenerator()
-        notification.notificationOccurred(.success)
-
         // Brief delay for better UX
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             let entry = DiaperEntry(
@@ -162,12 +158,6 @@ struct DiaperView: View {
         }
     }
 
-    // MARK: - Haptic Feedback
-
-    private func hapticSuccess() {
-        let notification = UINotificationFeedbackGenerator()
-        notification.notificationOccurred(.success)
-    }
 }
 
 #Preview {
