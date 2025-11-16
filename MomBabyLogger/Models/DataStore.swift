@@ -71,11 +71,24 @@ class DataStore: ObservableObject {
             lastBreastSide = side == .left ? .right : .left // Suggest opposite side
         }
 
+        // Track analytics
+        AnalyticsManager.shared.trackFeedingLogged(type: entry.type)
+
+        // Request review if appropriate
+        ReviewManager.shared.requestReviewIfAppropriate(entryCount: entries.count)
+
         saveData()
     }
 
     func addDiaper(_ entry: DiaperEntry) {
         entries.append(.diaper(entry))
+
+        // Track analytics
+        AnalyticsManager.shared.trackDiaperLogged(type: entry.type)
+
+        // Request review if appropriate
+        ReviewManager.shared.requestReviewIfAppropriate(entryCount: entries.count)
+
         saveData()
     }
 

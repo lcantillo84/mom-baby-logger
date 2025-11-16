@@ -9,6 +9,12 @@ import SwiftUI
 
 @main
 struct MomBabyLoggerApp: App {
+
+    init() {
+        // Track app open for analytics
+        AnalyticsManager.shared.trackAppOpen()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
