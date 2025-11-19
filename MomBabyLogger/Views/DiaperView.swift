@@ -66,6 +66,8 @@ struct DiaperView: View {
                     Spacer()
                 }
                 .padding(.vertical)
+                .frame(maxWidth: 600)
+                .frame(maxWidth: .infinity)
             }
             .navigationTitle("Diaper Change")
             .alert("Success!", isPresented: $showingConfirmation) {
@@ -95,6 +97,7 @@ struct DiaperView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
 
     // MARK: - Diaper Button

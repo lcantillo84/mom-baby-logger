@@ -67,6 +67,8 @@ struct FeedingView: View {
                     Spacer()
                 }
                 .padding(.vertical)
+                .frame(maxWidth: 600)
+                .frame(maxWidth: .infinity)
             }
             .navigationTitle("Feeding")
             .sheet(isPresented: $showingBreastTimer) {
@@ -81,6 +83,7 @@ struct FeedingView: View {
                 selectedSide = dataStore.lastBreastSide
             }
         }
+        .navigationViewStyle(.stack)
     }
 
     // MARK: - Breast Feeding Section

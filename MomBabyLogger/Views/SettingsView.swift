@@ -104,6 +104,7 @@ struct SettingsView: View {
                 Text("Successfully deleted \(deletedCount) \(deletedCount == 1 ? "entry" : "entries")")
             }
         }
+        .navigationViewStyle(.stack)
     }
 
     // MARK: - Delete Functions

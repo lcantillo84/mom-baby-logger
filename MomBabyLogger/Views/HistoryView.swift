@@ -47,6 +47,7 @@ struct HistoryView: View {
             }
             .navigationTitle("History")
         }
+        .navigationViewStyle(.stack)
     }
 
     // MARK: - Views
