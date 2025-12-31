@@ -14,6 +14,7 @@ struct DiaperView: View {
     @State private var lastLoggedType: ActivityType?
     @State private var isLogging = false
     @State private var confirmationMessage: String = ""
+    @FocusState private var focusedField: FocusField?
 
     var body: some View {
         NavigationView {
@@ -60,6 +61,7 @@ struct DiaperView: View {
                             .padding(8)
                             .background(Color(.systemGray6))
                             .cornerRadius(8)
+                            .focused($focusedField, equals: .notes)
                     }
                     .padding(.horizontal)
 
@@ -69,7 +71,9 @@ struct DiaperView: View {
                 .frame(maxWidth: 600)
                 .frame(maxWidth: .infinity)
             }
+            .dismissKeyboardOnTap()
             .navigationTitle("Diaper Change")
+            .keyboardDoneButton(focusedField: $focusedField)
             .alert("Success!", isPresented: $showingConfirmation) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -143,6 +147,7 @@ struct DiaperView: View {
         // Prevent double taps
         guard !isLogging else { return }
 
+        focusedField = nil
         isLogging = true
         lastLoggedType = type
 

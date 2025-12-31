@@ -26,6 +26,16 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
+                // Reminders Section
+                Section(header: Text("Reminders")) {
+                    NavigationLink(destination: ReminderSettingsView()) {
+                        HStack {
+                            Image(systemName: "bell.fill")
+                            Text("Feeding Reminders")
+                        }
+                    }
+                }
+                
                 // Export Section
                 Section(header: Text("Export")) {
                     Button(action: { showingExportView = true }) {
@@ -71,9 +81,39 @@ struct SettingsView: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("1.0.0")
+                        Text(AppVersionManager.shared.currentVersion)
                             .foregroundColor(.secondary)
                     }
+                    
+                    #if DEBUG
+                    // Debug: Review Status
+                    let reviewStatus = ReviewManager.shared.getReviewStatus()
+                    HStack {
+                        Text("Review Requests")
+                        Spacer()
+                        Text("\(reviewStatus.requestCount)/3")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    if let lastRequest = reviewStatus.lastRequestDate {
+                        HStack {
+                            Text("Last Review Request")
+                            Spacer()
+                            Text(lastRequest, style: .date)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Button(action: {
+                        ReviewManager.shared.forceRequestReview()
+                    }) {
+                        HStack {
+                            Image(systemName: "star.fill")
+                            Text("Test Review Prompt")
+                        }
+                    }
+                    #endif
                 }
 
                 Section {

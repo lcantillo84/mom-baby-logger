@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var dataStore = DataStore()
+    @State private var showWhatsNew = false
+    @State private var whatsNewContent: WhatsNewContent?
 
     var body: some View {
         TabView {
@@ -22,6 +24,11 @@ struct ContentView: View {
                     Label("Diaper", systemImage: "leaf.fill")
                 }
 
+            TodayView()
+                .tabItem {
+                    Label("Today", systemImage: "calendar")
+                }
+
             HistoryView()
                 .tabItem {
                     Label("History", systemImage: "clock.fill")
@@ -33,6 +40,30 @@ struct ContentView: View {
                 }
         }
         .environmentObject(dataStore)
+        .onAppear {
+            checkForAppUpdate()
+        }
+        .sheet(isPresented: $showWhatsNew) {
+            if let content = whatsNewContent {
+                WhatsNewView(content: content)
+            }
+        }
+    }
+
+    // MARK: - Version Check
+
+    private func checkForAppUpdate() {
+        let versionManager = AppVersionManager.shared
+
+        // Check if we should show What's New
+        if versionManager.shouldShowWhatsNew(),
+           let content = versionManager.getCurrentWhatsNewContent() {
+            whatsNewContent = content
+            showWhatsNew = true
+        }
+
+        // Update the last saved version
+        versionManager.updateLastVersion()
     }
 }
 

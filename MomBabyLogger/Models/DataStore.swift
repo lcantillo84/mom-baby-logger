@@ -77,6 +77,9 @@ class DataStore: ObservableObject {
         // Request review if appropriate
         ReviewManager.shared.requestReviewIfAppropriate(entryCount: entries.count)
 
+        // Schedule reminder for any feeding type
+        scheduleFeedingReminder()
+
         saveData()
     }
 
@@ -94,7 +97,34 @@ class DataStore: ObservableObject {
 
     func deleteEntry(_ entry: EntryWrapper) {
         entries.removeAll { $0.id == entry.id }
+
+        // Recalculate breast side recommendation after deletion
+        recalculateLastBreastSide()
+
+        // Reschedule reminder if deleted entry was a feeding
+        if case .feeding = entry {
+            scheduleFeedingReminder()
+        }
+
         saveData()
+    }
+
+    func updateEntry(_ entry: EntryWrapper) {
+        if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+            entries[index] = entry
+
+            // Update last breast side if it's a feeding entry
+            if case .feeding(let feedingEntry) = entry, let side = feedingEntry.side {
+                lastBreastSide = side == .left ? .right : .left
+            }
+
+            // Reschedule reminder if this is a feeding
+            if case .feeding = entry {
+                scheduleFeedingReminder()
+            }
+
+            saveData()
+        }
     }
 
     func deleteEntries(from startDate: Date, to endDate: Date) {
@@ -102,17 +132,8 @@ class DataStore: ObservableObject {
             entry.timestamp >= startDate && entry.timestamp <= endDate
         }
 
-        // If no feeding entries left, reset breast side to default
-        let hasFeedings = entries.contains { entry in
-            if case .feeding = entry {
-                return true
-            }
-            return false
-        }
-
-        if !hasFeedings {
-            lastBreastSide = .left
-        }
+        // Recalculate breast side recommendation based on remaining entries
+        recalculateLastBreastSide()
 
         saveData()
     }
@@ -168,6 +189,7 @@ class DataStore: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
            let decoded = try? JSONDecoder().decode([EntryWrapper].self, from: data) {
             entries = decoded
+            recalculateLastBreastSide()
             return
         }
 
@@ -178,11 +200,60 @@ class DataStore: ObservableObject {
 
             // Restore to UserDefaults
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
+            recalculateLastBreastSide()
             return
         }
 
         // If both fail, start with empty array
         entries = []
+    }
+
+    /// Recalculates the lastBreastSide based on the most recent breast feeding entry
+    private func recalculateLastBreastSide() {
+        // Find the most recent breast feeding entry
+        let breastFeedings = entries.compactMap { entry -> (side: BreastSide, timestamp: Date)? in
+            if case .feeding(let feedingEntry) = entry,
+               feedingEntry.type == .breastFeeding,
+               let side = feedingEntry.side {
+                return (side: side, timestamp: feedingEntry.timestamp)
+            }
+            return nil
+        }
+
+        // Sort by timestamp to get the most recent
+        if let mostRecent = breastFeedings.sorted(by: { $0.timestamp > $1.timestamp }).first {
+            // Suggest the opposite side of the most recent feeding
+            lastBreastSide = mostRecent.side == .left ? .right : .left
+        } else {
+            // No breast feeding history, keep default
+            lastBreastSide = .left
+        }
+    }
+
+    /// Schedule a reminder notification based on the most recent feeding
+    private func scheduleFeedingReminder() {
+        // Find the most recent feeding entry (any type: breast, bottle, or formula)
+        let feedings = entries.compactMap { entry -> Date? in
+            if case .feeding(let feedingEntry) = entry {
+                return feedingEntry.timestamp
+            }
+            return nil
+        }
+
+        // Get the most recent timestamp
+        guard let lastFeedingTime = feedings.sorted(by: { $0 > $1 }).first else {
+            // No feedings found, cancel any existing reminders
+            Task {
+                await NotificationManager.shared.cancelReminder()
+            }
+            return
+        }
+
+        // Load settings and schedule
+        let settings = ReminderSettings.load()
+        Task {
+            await NotificationManager.shared.scheduleReminder(for: lastFeedingTime, settings: settings)
+        }
     }
 
     // MARK: - Export

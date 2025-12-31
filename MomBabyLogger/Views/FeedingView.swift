@@ -22,6 +22,7 @@ struct FeedingView: View {
     @State private var showingConfirmation = false
     @State private var confirmationMessage: String = ""
     @State private var isLogging = false
+    @FocusState private var focusedField: FocusField?
 
     // Breast feeding manual entry
     @State private var selectedSide: BreastSide = .left
@@ -61,6 +62,7 @@ struct FeedingView: View {
                             .padding(8)
                             .background(Color(.systemGray6))
                             .cornerRadius(8)
+                            .focused($focusedField, equals: .notes)
                     }
                     .padding(.horizontal)
 
@@ -70,7 +72,9 @@ struct FeedingView: View {
                 .frame(maxWidth: 600)
                 .frame(maxWidth: .infinity)
             }
+            .dismissKeyboardOnTap()
             .navigationTitle("Feeding")
+            .keyboardDoneButton(focusedField: $focusedField)
             .sheet(isPresented: $showingBreastTimer) {
                 BreastFeedingTimerView()
             }
@@ -280,6 +284,7 @@ struct FeedingView: View {
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal)
+                .focused($focusedField, equals: .amount)
 
             Button(action: {
                 logBottleFeeding()
@@ -312,6 +317,7 @@ struct FeedingView: View {
                 .keyboardType(.decimalPad)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal)
+                .focused($focusedField, equals: .amount)
 
             Button(action: {
                 logFormulaFeeding()
@@ -335,6 +341,7 @@ struct FeedingView: View {
     // MARK: - Logging Functions
 
     private func logBreastFeeding(side: BreastSide, duration: TimeInterval) {
+        focusedField = nil
         isLogging = true
 
         let entry = FeedingEntry(
@@ -360,6 +367,7 @@ struct FeedingView: View {
     private func logBottleFeeding() {
         guard let amountValue = Double(amount) else { return }
 
+        focusedField = nil
         isLogging = true
 
         let entry = FeedingEntry(
@@ -381,6 +389,7 @@ struct FeedingView: View {
     private func logFormulaFeeding() {
         guard let amountValue = Double(amount) else { return }
 
+        focusedField = nil
         isLogging = true
 
         let entry = FeedingEntry(
@@ -402,6 +411,7 @@ struct FeedingView: View {
     private func clearForm() {
         amount = ""
         notes = ""
+        focusedField = nil
     }
 
 

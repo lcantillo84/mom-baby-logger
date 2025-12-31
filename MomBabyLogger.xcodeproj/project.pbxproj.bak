@@ -6,7 +6,20 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C0736D852F04BE9900A5A517 /* REMINDER_USER_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = C0736D842F04BE9900A5A517 /* REMINDER_USER_GUIDE.md */; };
+		C0736D872F04BF8100A5A517 /* FEEDING_REMINDERS_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = C0736D862F04BF8100A5A517 /* FEEDING_REMINDERS_GUIDE.md */; };
+		C0736D892F04DBD000A5A517 /* REVIEW_SYSTEM_FIXED.md in Resources */ = {isa = PBXBuildFile; fileRef = C0736D882F04DBD000A5A517 /* REVIEW_SYSTEM_FIXED.md */; };
+		C0736D8B2F04DDA400A5A517 /* APP_STORE_SUBMISSION_GUIDE.md in Resources */ = {isa = PBXBuildFile; fileRef = C0736D8A2F04DDA400A5A517 /* APP_STORE_SUBMISSION_GUIDE.md */; };
+		C0736D8D2F04DDBA00A5A517 /* QUICK_SUBMISSION_CHECKLIST.md in Resources */ = {isa = PBXBuildFile; fileRef = C0736D8C2F04DDB900A5A517 /* QUICK_SUBMISSION_CHECKLIST.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		C0736D842F04BE9900A5A517 /* REMINDER_USER_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = REMINDER_USER_GUIDE.md; sourceTree = "<group>"; };
+		C0736D862F04BF8100A5A517 /* FEEDING_REMINDERS_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = FEEDING_REMINDERS_GUIDE.md; sourceTree = "<group>"; };
+		C0736D882F04DBD000A5A517 /* REVIEW_SYSTEM_FIXED.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = REVIEW_SYSTEM_FIXED.md; sourceTree = "<group>"; };
+		C0736D8A2F04DDA400A5A517 /* APP_STORE_SUBMISSION_GUIDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = APP_STORE_SUBMISSION_GUIDE.md; sourceTree = "<group>"; };
+		C0736D8C2F04DDB900A5A517 /* QUICK_SUBMISSION_CHECKLIST.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = QUICK_SUBMISSION_CHECKLIST.md; sourceTree = "<group>"; };
 		C0DC71782EC11F890008A0C4 /* MomBabyLogger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MomBabyLogger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -34,6 +47,11 @@
 			children = (
 				C0DC717A2EC11F890008A0C4 /* MomBabyLogger */,
 				C0DC71792EC11F890008A0C4 /* Products */,
+				C0736D842F04BE9900A5A517 /* REMINDER_USER_GUIDE.md */,
+				C0736D862F04BF8100A5A517 /* FEEDING_REMINDERS_GUIDE.md */,
+				C0736D882F04DBD000A5A517 /* REVIEW_SYSTEM_FIXED.md */,
+				C0736D8A2F04DDA400A5A517 /* APP_STORE_SUBMISSION_GUIDE.md */,
+				C0736D8C2F04DDB900A5A517 /* QUICK_SUBMISSION_CHECKLIST.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -109,6 +127,11 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0736D892F04DBD000A5A517 /* REVIEW_SYSTEM_FIXED.md in Resources */,
+				C0736D8D2F04DDBA00A5A517 /* QUICK_SUBMISSION_CHECKLIST.md in Resources */,
+				C0736D872F04BF8100A5A517 /* FEEDING_REMINDERS_GUIDE.md in Resources */,
+				C0736D852F04BE9900A5A517 /* REMINDER_USER_GUIDE.md in Resources */,
+				C0736D8B2F04DDA400A5A517 /* APP_STORE_SUBMISSION_GUIDE.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -178,7 +201,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -237,7 +260,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;

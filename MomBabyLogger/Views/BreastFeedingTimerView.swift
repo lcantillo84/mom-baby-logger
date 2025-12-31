@@ -16,6 +16,7 @@ struct BreastFeedingTimerView: View {
     @State private var isRunning = false
     @State private var timer: Timer?
     @State private var notes: String = ""
+    @FocusState private var focusedField: FocusField?
 
     init() {
         // Initialize with suggested side
@@ -106,6 +107,7 @@ struct BreastFeedingTimerView: View {
                         .padding(8)
                         .background(Color(.systemGray6))
                         .cornerRadius(8)
+                        .focused($focusedField, equals: .notes)
                 }
                 .padding(.horizontal)
 
@@ -127,8 +129,10 @@ struct BreastFeedingTimerView: View {
                 Spacer()
             }
             .padding(.vertical)
+            .dismissKeyboardOnTap()
             .navigationTitle("Breast Feeding Timer")
             .navigationBarTitleDisplayMode(.inline)
+            .keyboardDoneButton(focusedField: $focusedField)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Cancel") {
@@ -167,6 +171,7 @@ struct BreastFeedingTimerView: View {
     }
 
     private func saveFeeding() {
+        focusedField = nil
         let entry = FeedingEntry(
             type: .breastFeeding,
             side: selectedSide,

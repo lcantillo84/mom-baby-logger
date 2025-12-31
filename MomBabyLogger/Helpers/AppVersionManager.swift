@@ -1,0 +1,113 @@
+//
+//  AppVersionManager.swift
+//  MomBabyLogger
+//
+//  Created by Lilianne Cantillo on 11/26/25.
+//
+
+import Foundation
+
+class AppVersionManager {
+    static let shared = AppVersionManager()
+
+    private let lastVersionKey = "LastAppVersion"
+    private let hasSeenWhatsNewKey = "HasSeenWhatsNew_"
+
+    private init() {}
+
+    // MARK: - Version Detection
+
+    var currentVersion: String {
+        return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
+
+    var lastSavedVersion: String? {
+        return UserDefaults.standard.string(forKey: lastVersionKey)
+    }
+
+    var isFirstLaunch: Bool {
+        return lastSavedVersion == nil
+    }
+
+    var isNewVersion: Bool {
+        guard let lastVersion = lastSavedVersion else {
+            return false // First launch, not an update
+        }
+        return lastVersion != currentVersion
+    }
+
+    // MARK: - What's New Management
+
+    func shouldShowWhatsNew() -> Bool {
+        // Don't show on first install
+        if isFirstLaunch {
+            return false
+        }
+
+        // Show if it's a new version and user hasn't seen it yet
+        if isNewVersion {
+            let hasSeenKey = hasSeenWhatsNewKey + currentVersion
+            return !UserDefaults.standard.bool(forKey: hasSeenKey)
+        }
+
+        return false
+    }
+
+    func markWhatsNewAsSeen() {
+        let hasSeenKey = hasSeenWhatsNewKey + currentVersion
+        UserDefaults.standard.set(true, forKey: hasSeenKey)
+    }
+
+    func updateLastVersion() {
+        UserDefaults.standard.set(currentVersion, forKey: lastVersionKey)
+    }
+
+    // MARK: - What's New Content
+
+    /// Add your release notes here for each version
+    /// Users will see this when they update to that version
+    func getWhatsNewContent(for version: String) -> WhatsNewContent? {
+        let whatsNewData: [String: WhatsNewContent] = [
+            "1.1.0": WhatsNewContent(
+                version: "1.1.0",
+                title: "Edit Your Logs Anytime!",
+                features: [
+                    WhatsNewFeature(icon: "pencil.circle.fill", title: "Edit Entries", description: "Fix mistakes or update any feeding or diaper log"),
+                    WhatsNewFeature(icon: "hand.draw.fill", title: "Easy Swipe", description: "Swipe left on any entry to edit or delete"),
+                    WhatsNewFeature(icon: "clock.fill", title: "Update Details", description: "Change times, amounts, notes, and more")
+                ]
+            ),
+
+            // FUTURE UPDATES: Add new versions here
+            // Example for next update:
+            // "1.2.0": WhatsNewContent(
+            //     version: "1.2.0",
+            //     title: "New Features Coming Soon!",
+            //     features: [
+            //         WhatsNewFeature(icon: "chart.bar.fill", title: "Statistics", description: "View feeding and diaper patterns"),
+            //     ]
+            // ),
+        ]
+
+        return whatsNewData[version]
+    }
+
+    func getCurrentWhatsNewContent() -> WhatsNewContent? {
+        return getWhatsNewContent(for: currentVersion)
+    }
+}
+
+// MARK: - Models
+
+struct WhatsNewContent {
+    let version: String
+    let title: String
+    let features: [WhatsNewFeature]
+}
+
+struct WhatsNewFeature: Identifiable {
+    let id = UUID()
+    let icon: String
+    let title: String
+    let description: String
+}

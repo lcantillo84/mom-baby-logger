@@ -10,6 +10,7 @@ import SwiftUI
 struct HistoryView: View {
     @EnvironmentObject var dataStore: DataStore
     @State private var isRefreshing = false
+    @State private var entryToEdit: EntryWrapper?
 
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -28,7 +29,14 @@ struct HistoryView: View {
                             Section(header: dayHeader(for: dayGroup.date)) {
                                 ForEach(dayGroup.entries) { entry in
                                     ActivityRowView(entry: entry)
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        .swipeActions(edge: .trailing) {
+                                            Button {
+                                                entryToEdit = entry
+                                            } label: {
+                                                Label("Edit", systemImage: "pencil")
+                                            }
+                                            .tint(.blue)
+
                                             Button(role: .destructive) {
                                                 deleteEntry(entry)
                                             } label: {
@@ -48,6 +56,10 @@ struct HistoryView: View {
             .navigationTitle("History")
         }
         .navigationViewStyle(.stack)
+        .sheet(item: $entryToEdit) { entry in
+            EditEntryView(entry: entry)
+                .environmentObject(dataStore)
+        }
     }
 
     // MARK: - Views
