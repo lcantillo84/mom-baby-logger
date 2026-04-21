@@ -21,46 +21,46 @@ struct DiaperView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     Text("What type of diaper change?")
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                        .font(AppTheme.Typography.titleMedium)
+                        .foregroundColor(AppTheme.Colors.primaryText)
                         .padding(.top)
 
-                    // Three large buttons for diaper types
-                    VStack(spacing: 20) {
+                    VStack(spacing: 16) {
                         diaperButton(
                             type: .wetDiaper,
                             icon: "drop.triangle",
-                            color: .blue,
+                            color: AppTheme.Colors.wetDiaper,
                             title: "Wet"
                         )
-
                         diaperButton(
                             type: .poopDiaper,
                             icon: "leaf.fill",
-                            color: .brown,
+                            color: AppTheme.Colors.poopDiaper,
                             title: "Poop"
                         )
-
                         diaperButton(
                             type: .mixedDiaper,
                             icon: "drop.triangle.fill",
-                            color: .purple,
+                            color: AppTheme.Colors.mixedDiaper,
                             title: "Both"
                         )
                     }
                     .padding(.horizontal)
 
-                    // Notes section
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Notes (Optional)")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
+                            .font(AppTheme.Typography.sectionHeader)
+                            .foregroundColor(AppTheme.Colors.secondaryText)
 
                         TextEditor(text: $notes)
                             .frame(height: 100)
                             .padding(8)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
+                            .background(AppTheme.Colors.formBackground)
+                            .cornerRadius(AppTheme.Radius.sm)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                                    .stroke(AppTheme.Colors.secondaryText.opacity(0.15), lineWidth: 1)
+                            )
                             .focused($focusedField, equals: .notes)
                     }
                     .padding(.horizontal)
@@ -71,6 +71,7 @@ struct DiaperView: View {
                 .frame(maxWidth: 600)
                 .frame(maxWidth: .infinity)
             }
+            .background(AppTheme.Colors.appBackground.ignoresSafeArea())
             .dismissKeyboardOnTap()
             .navigationTitle("Diaper Change")
             .keyboardDoneButton(focusedField: $focusedField)
@@ -82,21 +83,23 @@ struct DiaperView: View {
             .overlay {
                 if isLogging {
                     ZStack {
-                        Color.black.opacity(0.3)
+                        Color.black.opacity(0.25)
                             .ignoresSafeArea()
 
                         VStack(spacing: 16) {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .progressViewStyle(CircularProgressViewStyle(tint: AppTheme.Colors.primaryAction))
                                 .scaleEffect(1.5)
 
                             Text("Logging...")
-                                .foregroundColor(.white)
+                                .foregroundColor(AppTheme.Colors.primaryText)
+                                .font(AppTheme.Typography.bodyMedium)
                                 .fontWeight(.medium)
                         }
                         .padding(32)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(16)
+                        .background(AppTheme.Colors.cardBackground)
+                        .cornerRadius(AppTheme.Radius.xl)
+                        .modifier(CardShadow())
                     }
                 }
             }
@@ -112,46 +115,46 @@ struct DiaperView: View {
         }) {
             HStack(spacing: 16) {
                 Image(systemName: icon)
-                    .font(.system(size: 32))
+                    .font(.system(size: 28, weight: .medium))
                     .foregroundColor(.white)
-                    .frame(width: 60, height: 60)
+                    .frame(width: 56, height: 56)
                     .background(color)
                     .clipShape(Circle())
+                    .modifier(CardShadow())
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
+                        .font(AppTheme.Typography.titleSmall)
+                        .foregroundColor(AppTheme.Colors.primaryText)
 
                     Text("Tap to log")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(AppTheme.Typography.labelSmall)
+                        .foregroundColor(AppTheme.Colors.secondaryText)
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.tertiaryText)
             }
-            .padding()
-            .background(Color(.systemGray6))
-            .cornerRadius(16)
+            .padding(AppTheme.Spacing.md)
+            .background(color.opacity(0.10))
+            .cornerRadius(AppTheme.Radius.card)
+            .modifier(CardShadow())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(DiaperCardButtonStyle())
     }
 
     // MARK: - Logging Function
 
     private func logDiaperChange(type: ActivityType) {
-        // Prevent double taps
         guard !isLogging else { return }
 
         focusedField = nil
         isLogging = true
         lastLoggedType = type
 
-        // Brief delay for better UX
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             let entry = DiaperEntry(
                 type: type,

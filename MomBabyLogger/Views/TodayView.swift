@@ -2,8 +2,6 @@
 //  TodayView.swift
 //  MomBabyLogger
 //
-//  Today tab showing daily stats and recent activities
-//
 
 import SwiftUI
 
@@ -26,25 +24,22 @@ struct TodayView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Daily stats section
                     DailyStatsSection(stats: todayStats)
 
-                    // Divider
-                    if !todayEntries.isEmpty {
-                        Divider()
-                            .padding(.horizontal)
-                    }
-
-                    // Recent activities
                     if !todayEntries.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Recent Activities")
-                                .font(.title2)
-                                .fontWeight(.bold)
+                                .font(AppTheme.Typography.titleMedium)
+                                .foregroundColor(AppTheme.Colors.primaryText)
                                 .padding(.horizontal)
 
                             ForEach(todayEntries.sorted { $0.timestamp > $1.timestamp }) { entry in
                                 ActivityRowView(entry: entry)
+                                    .padding(.horizontal, AppTheme.Spacing.md)
+                                    .padding(.vertical, 4)
+                                    .background(AppTheme.Colors.cardBackground)
+                                    .cornerRadius(AppTheme.Radius.lg)
+                                    .modifier(CardShadow())
                                     .padding(.horizontal)
                             }
                         }
@@ -54,6 +49,7 @@ struct TodayView: View {
                 }
                 .padding(.vertical)
             }
+            .background(AppTheme.Colors.appBackground.ignoresSafeArea())
             .navigationTitle("Today")
             .navigationBarTitleDisplayMode(.large)
         }

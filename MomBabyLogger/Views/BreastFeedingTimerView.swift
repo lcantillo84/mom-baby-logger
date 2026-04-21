@@ -18,54 +18,91 @@ struct BreastFeedingTimerView: View {
     @State private var notes: String = ""
     @FocusState private var focusedField: FocusField?
 
+    @State private var pulseScale: CGFloat = 1.0
+    @State private var pulseOpacity: Double = 0.5
+
     init() {
-        // Initialize with suggested side
         _selectedSide = State(initialValue: .left)
     }
 
     var body: some View {
         NavigationView {
             VStack(spacing: 32) {
-                // Side selector
-                VStack(spacing: 16) {
+                // Side selector — custom chips
+                VStack(spacing: 12) {
                     Text("Select Side")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
+                        .font(AppTheme.Typography.sectionHeader)
+                        .foregroundColor(AppTheme.Colors.secondaryText)
 
-                    Picker("Side", selection: $selectedSide) {
-                        Text("Left").tag(BreastSide.left)
-                        Text("Right").tag(BreastSide.right)
+                    HStack(spacing: 12) {
+                        ForEach([BreastSide.left, BreastSide.right], id: \.self) { side in
+                            Button(action: { selectedSide = side }) {
+                                Text(side.displayName)
+                                    .font(AppTheme.Typography.bodyMedium)
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        selectedSide == side
+                                            ? AppTheme.Colors.primaryAction
+                                            : AppTheme.Colors.cardBackground
+                                    )
+                                    .foregroundColor(
+                                        selectedSide == side ? .white : AppTheme.Colors.secondaryText
+                                    )
+                                    .cornerRadius(AppTheme.Radius.md)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                                            .stroke(
+                                                selectedSide == side
+                                                    ? AppTheme.Colors.primaryAction
+                                                    : AppTheme.Colors.secondaryText.opacity(0.2),
+                                                lineWidth: 1
+                                            )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isRunning)
+                            .opacity(isRunning ? 0.6 : 1.0)
+                            .animation(.easeInOut(duration: 0.15), value: selectedSide)
+                        }
                     }
-                    .pickerStyle(.segmented)
                     .padding(.horizontal)
-                    .disabled(isRunning)
                 }
 
-                // Timer display
-                VStack(spacing: 16) {
-                    Text(timeString(from: elapsedTime))
-                        .font(.system(size: 64, weight: .bold, design: .rounded))
-                        .monospacedDigit()
+                // Timer display with pulse ring
+                VStack(spacing: 12) {
+                    ZStack {
+                        if isRunning {
+                            Circle()
+                                .stroke(AppTheme.Colors.primaryAction.opacity(pulseOpacity), lineWidth: 2)
+                                .frame(width: 180, height: 180)
+                                .scaleEffect(pulseScale)
+                        }
+
+                        Text(timeString(from: elapsedTime))
+                            .font(AppTheme.Typography.displayLarge)
+                            .monospacedDigit()
+                            .foregroundColor(isRunning ? AppTheme.Colors.primaryAction : AppTheme.Colors.primaryText)
+                    }
+                    .frame(height: 120)
 
                     Text(isRunning ? "Timer Running" : "Ready to Start")
-                        .font(.headline)
-                        .foregroundColor(isRunning ? .green : .secondary)
+                        .font(AppTheme.Typography.bodyMedium)
+                        .fontWeight(.medium)
+                        .foregroundColor(isRunning ? AppTheme.Colors.primaryAction : AppTheme.Colors.secondaryText)
                 }
 
-                // Timer controls
-                HStack(spacing: 20) {
+                // Controls
+                HStack(spacing: 16) {
                     if !isRunning {
                         Button(action: startTimer) {
                             HStack {
                                 Image(systemName: "play.fill")
                                 Text("Start")
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.green)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
                         }
+                        .buttonStyle(SecondaryButtonStyle())
                     } else {
                         Button(action: stopTimer) {
                             HStack {
@@ -73,11 +110,12 @@ struct BreastFeedingTimerView: View {
                                 Text("Stop")
                             }
                             .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.red)
+                            .padding(AppTheme.Spacing.md)
+                            .background(AppTheme.Colors.destructiveAction)
                             .foregroundColor(.white)
-                            .cornerRadius(12)
+                            .cornerRadius(AppTheme.Radius.md)
                         }
+                        .buttonStyle(.plain)
                     }
 
                     if elapsedTime > 0 {
@@ -87,11 +125,12 @@ struct BreastFeedingTimerView: View {
                                 Text("Reset")
                             }
                             .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.orange)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
+                            .padding(AppTheme.Spacing.md)
+                            .background(AppTheme.Colors.warningBanner)
+                            .foregroundColor(AppTheme.Colors.primaryText)
+                            .cornerRadius(AppTheme.Radius.md)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal)
@@ -99,14 +138,18 @@ struct BreastFeedingTimerView: View {
                 // Notes
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Notes (Optional)")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
+                        .font(AppTheme.Typography.sectionHeader)
+                        .foregroundColor(AppTheme.Colors.secondaryText)
 
                     TextEditor(text: $notes)
                         .frame(height: 80)
                         .padding(8)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
+                        .background(AppTheme.Colors.formBackground)
+                        .cornerRadius(AppTheme.Radius.sm)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                                .stroke(AppTheme.Colors.secondaryText.opacity(0.15), lineWidth: 1)
+                        )
                         .focused($focusedField, equals: .notes)
                 }
                 .padding(.horizontal)
@@ -117,18 +160,15 @@ struct BreastFeedingTimerView: View {
                         Image(systemName: "checkmark.circle.fill")
                         Text("Save Feeding")
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(elapsedTime > 0 ? Color.blue : Color.gray)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
                 }
+                .buttonStyle(PrimaryButtonStyle())
                 .padding(.horizontal)
                 .disabled(elapsedTime == 0)
 
                 Spacer()
             }
             .padding(.vertical)
+            .background(AppTheme.Colors.appBackground.ignoresSafeArea())
             .dismissKeyboardOnTap()
             .navigationTitle("Breast Feeding Timer")
             .navigationBarTitleDisplayMode(.inline)
@@ -138,10 +178,10 @@ struct BreastFeedingTimerView: View {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .foregroundColor(AppTheme.Colors.primaryAction)
                 }
             }
             .onAppear {
-                // Set suggested side based on last feeding
                 selectedSide = dataStore.lastBreastSide
             }
             .onDisappear {
@@ -157,12 +197,18 @@ struct BreastFeedingTimerView: View {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             elapsedTime += 1
         }
+        withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+            pulseScale = 1.12
+            pulseOpacity = 0.1
+        }
     }
 
     private func stopTimer() {
         isRunning = false
         timer?.invalidate()
         timer = nil
+        pulseScale = 1.0
+        pulseOpacity = 0.5
     }
 
     private func resetTimer() {
@@ -182,7 +228,7 @@ struct BreastFeedingTimerView: View {
         dismiss()
     }
 
-    // MARK: - Helper Functions
+    // MARK: - Helpers
 
     private func timeString(from timeInterval: TimeInterval) -> String {
         let hours = Int(timeInterval) / 3600

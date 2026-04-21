@@ -24,7 +24,6 @@ struct FeedingView: View {
     @State private var isLogging = false
     @FocusState private var focusedField: FocusField?
 
-    // Breast feeding manual entry
     @State private var selectedSide: BreastSide = .left
     @State private var manualMinutes: Double = 10
 
@@ -32,14 +31,42 @@ struct FeedingView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Feeding type selector
-                    Picker("Feeding Type", selection: $selectedType) {
+                    // Feeding type selector — custom chips
+                    HStack(spacing: 8) {
                         ForEach(FeedingType.allCases, id: \.self) { type in
-                            Text(type.rawValue).tag(type)
+                            Button(action: { selectedType = type }) {
+                                Text(type.rawValue)
+                                    .font(AppTheme.Typography.bodyMedium)
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        selectedType == type
+                                            ? AppTheme.Colors.primaryAction
+                                            : AppTheme.Colors.cardBackground
+                                    )
+                                    .foregroundColor(
+                                        selectedType == type
+                                            ? .white
+                                            : AppTheme.Colors.secondaryText
+                                    )
+                                    .cornerRadius(AppTheme.Radius.md)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                                            .stroke(
+                                                selectedType == type
+                                                    ? AppTheme.Colors.primaryAction
+                                                    : AppTheme.Colors.secondaryText.opacity(0.2),
+                                                lineWidth: 1
+                                            )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .animation(.easeInOut(duration: 0.15), value: selectedType)
                         }
                     }
-                    .pickerStyle(.segmented)
                     .padding(.horizontal)
+                    .padding(.top, 4)
 
                     // Content based on selected type
                     switch selectedType {
@@ -54,14 +81,18 @@ struct FeedingView: View {
                     // Notes section
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Notes (Optional)")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
+                            .font(AppTheme.Typography.sectionHeader)
+                            .foregroundColor(AppTheme.Colors.secondaryText)
 
                         TextEditor(text: $notes)
                             .frame(height: 80)
                             .padding(8)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
+                            .background(AppTheme.Colors.formBackground)
+                            .cornerRadius(AppTheme.Radius.sm)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                                    .stroke(AppTheme.Colors.secondaryText.opacity(0.15), lineWidth: 1)
+                            )
                             .focused($focusedField, equals: .notes)
                     }
                     .padding(.horizontal)
@@ -72,6 +103,7 @@ struct FeedingView: View {
                 .frame(maxWidth: 600)
                 .frame(maxWidth: .infinity)
             }
+            .background(AppTheme.Colors.appBackground.ignoresSafeArea())
             .dismissKeyboardOnTap()
             .navigationTitle("Feeding")
             .keyboardDoneButton(focusedField: $focusedField)
@@ -94,116 +126,136 @@ struct FeedingView: View {
 
     private var breastFeedingSection: some View {
         VStack(spacing: 20) {
-            // Recommendation banner
+            // Recommendation / info banner
             if hasFeedingHistory {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     HStack(spacing: 8) {
                         Image(systemName: "info.circle.fill")
-                            .foregroundColor(.blue)
+                            .foregroundColor(AppTheme.Colors.bottleFeeding)
                         Text("Last used: \(oppositeOf(dataStore.lastBreastSide).displayName) breast")
-                            .font(.subheadline)
+                            .font(AppTheme.Typography.bodySmall)
                             .fontWeight(.medium)
+                            .foregroundColor(AppTheme.Colors.secondaryText)
                         Spacer()
                     }
                     .padding(.horizontal)
 
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.right.circle.fill")
-                            .foregroundColor(.green)
+                            .foregroundColor(AppTheme.Colors.primaryAction)
                         Text("Try: \(dataStore.lastBreastSide.displayName) breast")
-                            .font(.headline)
+                            .font(AppTheme.Typography.bodyMedium)
                             .fontWeight(.semibold)
-                            .foregroundColor(.green)
+                            .foregroundColor(AppTheme.Colors.primaryAction)
                         Spacer()
                     }
                     .padding()
-                    .background(Color.green.opacity(0.1))
-                    .cornerRadius(12)
+                    .background(AppTheme.Colors.successBanner)
+                    .cornerRadius(AppTheme.Radius.md)
                     .padding(.horizontal)
                 }
                 .padding(.top)
             } else {
-                // First time message
                 HStack(spacing: 8) {
                     Image(systemName: "info.circle.fill")
-                        .foregroundColor(.blue)
-                    Text("Start with either breast - the app will track which one to use next")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppTheme.Colors.primaryAction)
+                    Text("Start with either breast — the app will track which one to use next")
+                        .font(AppTheme.Typography.bodySmall)
+                        .foregroundColor(AppTheme.Colors.secondaryText)
                     Spacer()
                 }
                 .padding()
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(12)
+                .background(AppTheme.Colors.infoBanner)
+                .cornerRadius(AppTheme.Radius.md)
                 .padding(.horizontal)
                 .padding(.top)
             }
 
-            // Side selector
+            // Side selector — custom chips
             VStack(spacing: 12) {
                 Text("Select Side")
-                    .font(.headline)
-                    .foregroundColor(.secondary)
+                    .font(AppTheme.Typography.sectionHeader)
+                    .foregroundColor(AppTheme.Colors.secondaryText)
 
-                Picker("Side", selection: $selectedSide) {
-                    Text("Left").tag(BreastSide.left)
-                    Text("Right").tag(BreastSide.right)
+                HStack(spacing: 12) {
+                    ForEach([BreastSide.left, BreastSide.right], id: \.self) { side in
+                        Button(action: { selectedSide = side }) {
+                            Text(side.displayName)
+                                .font(AppTheme.Typography.bodyMedium)
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(
+                                    selectedSide == side
+                                        ? AppTheme.Colors.primaryAction
+                                        : AppTheme.Colors.cardBackground
+                                )
+                                .foregroundColor(
+                                    selectedSide == side ? .white : AppTheme.Colors.secondaryText
+                                )
+                                .cornerRadius(AppTheme.Radius.md)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: AppTheme.Radius.md)
+                                        .stroke(
+                                            selectedSide == side
+                                                ? AppTheme.Colors.primaryAction
+                                                : AppTheme.Colors.secondaryText.opacity(0.2),
+                                            lineWidth: 1
+                                        )
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .animation(.easeInOut(duration: 0.15), value: selectedSide)
+                    }
                 }
-                .pickerStyle(.segmented)
                 .padding(.horizontal)
 
-                // Warning if selecting same side as last
                 if dataStore.lastBreastSide == oppositeOf(selectedSide) {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
+                            .foregroundColor(AppTheme.Palette.caramel)
                         Text("Same side as last time")
-                            .font(.subheadline)
+                            .font(AppTheme.Typography.bodySmall)
                             .fontWeight(.medium)
-                            .foregroundColor(.orange)
+                            .foregroundColor(AppTheme.Palette.caramel)
                     }
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
-                    .background(Color.orange.opacity(0.1))
-                    .cornerRadius(8)
+                    .background(AppTheme.Colors.warningBanner)
+                    .cornerRadius(AppTheme.Radius.sm)
                     .transition(.opacity)
                 }
             }
 
-            // Manual time entry
+            // Duration control
             VStack(spacing: 12) {
                 Text("Duration: \(Int(manualMinutes)) minutes")
-                    .font(.headline)
-                    .foregroundColor(.primary)
+                    .font(AppTheme.Typography.sectionHeader)
+                    .foregroundColor(AppTheme.Colors.primaryText)
 
                 HStack(spacing: 16) {
                     Button(action: {
-                        if manualMinutes > 1 {
-                            manualMinutes -= 1
-                        }
+                        if manualMinutes > 1 { manualMinutes -= 1 }
                     }) {
                         Image(systemName: "minus.circle.fill")
                             .font(.system(size: 32))
-                            .foregroundColor(.blue)
+                            .foregroundColor(AppTheme.Colors.primaryAction)
                     }
 
                     Slider(value: $manualMinutes, in: 1...60, step: 1)
-                        .tint(.blue)
+                        .tint(AppTheme.Colors.primaryAction)
 
                     Button(action: {
-                        if manualMinutes < 60 {
-                            manualMinutes += 1
-                        }
+                        if manualMinutes < 60 { manualMinutes += 1 }
                     }) {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 32))
-                            .foregroundColor(.blue)
+                            .foregroundColor(AppTheme.Colors.primaryAction)
                     }
                 }
                 .padding(.horizontal)
 
-                // Quick time buttons
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     quickTimeButton(minutes: 5)
                     quickTimeButton(minutes: 10)
                     quickTimeButton(minutes: 15)
@@ -222,23 +274,17 @@ struct FeedingView: View {
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     } else {
                         Image(systemName: "checkmark.circle.fill")
-                        Text("Log \(selectedSide.displayName) Breast - \(Int(manualMinutes)) min")
+                        Text("Log \(selectedSide.displayName) Breast — \(Int(manualMinutes)) min")
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(isLogging ? Color.gray : Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(12)
             }
+            .buttonStyle(PrimaryButtonStyle())
             .padding(.horizontal)
             .disabled(isLogging)
 
-            // Divider
             Divider()
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
 
-            // Timer option
             Button(action: {
                 showingBreastTimer = true
             }) {
@@ -246,12 +292,8 @@ struct FeedingView: View {
                     Image(systemName: "timer")
                     Text("Use Live Timer Instead")
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.green.opacity(0.1))
-                .foregroundColor(.green)
-                .cornerRadius(12)
             }
+            .buttonStyle(SecondaryButtonStyle())
             .padding(.horizontal)
         }
         .padding()
@@ -262,14 +304,30 @@ struct FeedingView: View {
             manualMinutes = Double(minutes)
         }) {
             Text("\(minutes)m")
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(manualMinutes == Double(minutes) ? Color.blue : Color(.systemGray5))
-                .foregroundColor(manualMinutes == Double(minutes) ? .white : .primary)
-                .cornerRadius(8)
+                .font(AppTheme.Typography.labelMedium)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    manualMinutes == Double(minutes)
+                        ? AppTheme.Colors.primaryAction
+                        : AppTheme.Colors.cardBackground
+                )
+                .foregroundColor(
+                    manualMinutes == Double(minutes) ? .white : AppTheme.Colors.secondaryText
+                )
+                .cornerRadius(AppTheme.Radius.pill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.pill)
+                        .stroke(
+                            manualMinutes == Double(minutes)
+                                ? AppTheme.Colors.primaryAction
+                                : AppTheme.Colors.secondaryText.opacity(0.2),
+                            lineWidth: 1
+                        )
+                )
         }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.12), value: manualMinutes)
     }
 
     // MARK: - Bottle Feeding Section
@@ -277,8 +335,8 @@ struct FeedingView: View {
     private var bottleFeedingSection: some View {
         VStack(spacing: 16) {
             Text("Amount (oz)")
-                .font(.headline)
-                .foregroundColor(.secondary)
+                .font(AppTheme.Typography.sectionHeader)
+                .foregroundColor(AppTheme.Colors.secondaryText)
 
             TextField("Enter amount", text: $amount)
                 .keyboardType(.decimalPad)
@@ -293,12 +351,8 @@ struct FeedingView: View {
                     Image(systemName: "drop.fill")
                     Text("Log Bottle Feeding")
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(12)
             }
+            .buttonStyle(PrimaryButtonStyle())
             .padding(.horizontal)
             .disabled(amount.isEmpty)
         }
@@ -310,8 +364,8 @@ struct FeedingView: View {
     private var formulaFeedingSection: some View {
         VStack(spacing: 16) {
             Text("Amount (oz)")
-                .font(.headline)
-                .foregroundColor(.secondary)
+                .font(AppTheme.Typography.sectionHeader)
+                .foregroundColor(AppTheme.Colors.secondaryText)
 
             TextField("Enter amount", text: $amount)
                 .keyboardType(.decimalPad)
@@ -326,12 +380,8 @@ struct FeedingView: View {
                     Image(systemName: "drop.fill")
                     Text("Log Formula Feeding")
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(12)
             }
+            .buttonStyle(PrimaryButtonStyle())
             .padding(.horizontal)
             .disabled(amount.isEmpty)
         }
@@ -351,15 +401,12 @@ struct FeedingView: View {
             notes: notes.isEmpty ? nil : notes
         )
 
-        // Simulate brief delay for better UX
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             dataStore.addFeeding(entry)
             isLogging = false
             confirmationMessage = "Logged \(side.displayName) breast feeding for \(Int(duration/60)) minutes"
             showingConfirmation = true
             clearForm()
-
-            // Update suggested side for next time
             selectedSide = dataStore.lastBreastSide
         }
     }
@@ -414,8 +461,7 @@ struct FeedingView: View {
         focusedField = nil
     }
 
-
-    // MARK: - Helper Functions
+    // MARK: - Helpers
 
     private var hasFeedingHistory: Bool {
         return dataStore.entries.contains { entry in

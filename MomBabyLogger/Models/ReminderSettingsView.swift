@@ -19,7 +19,7 @@ struct ReminderSettingsView: View {
             Section {
                 HStack {
                     Image(systemName: notificationManager.isAuthorized ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundColor(notificationManager.isAuthorized ? .green : .orange)
+                        .foregroundColor(notificationManager.isAuthorized ? AppTheme.Colors.primaryAction : AppTheme.Palette.caramel)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Notification Status")
@@ -44,6 +44,7 @@ struct ReminderSettingsView: View {
             // Reminder Settings Section
             Section(header: Text("Reminder Settings")) {
                 Toggle("Enable Reminders", isOn: $settings.isEnabled)
+                    .tint(AppTheme.Colors.primaryAction)
                     .onChange(of: settings.isEnabled) { _, newValue in
                         settings.save()
                         if !newValue {
@@ -56,7 +57,7 @@ struct ReminderSettingsView: View {
                 
                 if settings.isEnabled {
                     Picker("Reminder Interval", selection: $settings.intervalHours) {
-                        ForEach(ReminderSettings.intervalOptions, id: \.self) { hours in
+                        ForEach(Self.allIntervalOptions, id: \.self) { hours in
                             Text(formatInterval(hours))
                                 .tag(hours)
                         }
@@ -74,7 +75,7 @@ struct ReminderSettingsView: View {
                     if let nextDate = nextReminderDate {
                         HStack {
                             Image(systemName: "clock")
-                                .foregroundColor(.blue)
+                                .foregroundColor(AppTheme.Colors.primaryAction)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(nextDate, style: .date)
                                     .font(.subheadline)
@@ -124,7 +125,7 @@ struct ReminderSettingsView: View {
                             .font(.caption)
                     } icon: {
                         Image(systemName: "1.circle.fill")
-                            .foregroundColor(.blue)
+                            .foregroundColor(AppTheme.Colors.primaryAction)
                     }
                     
                     Label {
@@ -132,7 +133,7 @@ struct ReminderSettingsView: View {
                             .font(.caption)
                     } icon: {
                         Image(systemName: "2.circle.fill")
-                            .foregroundColor(.blue)
+                            .foregroundColor(AppTheme.Colors.primaryAction)
                     }
                     
                     Label {
@@ -140,7 +141,7 @@ struct ReminderSettingsView: View {
                             .font(.caption)
                     } icon: {
                         Image(systemName: "3.circle.fill")
-                            .foregroundColor(.blue)
+                            .foregroundColor(AppTheme.Colors.primaryAction)
                     }
                     
                     Divider()
@@ -167,7 +168,7 @@ struct ReminderSettingsView: View {
                                 .font(.caption)
                         } icon: {
                             Image(systemName: "checkmark.circle")
-                                .foregroundColor(.green)
+                                .foregroundColor(AppTheme.Colors.primaryAction)
                         }
                         
                         Label {
@@ -175,7 +176,7 @@ struct ReminderSettingsView: View {
                                 .font(.caption)
                         } icon: {
                             Image(systemName: "heart.circle")
-                                .foregroundColor(.blue)
+                                .foregroundColor(AppTheme.Colors.primaryAction)
                         }
                         
                         Label {
@@ -183,7 +184,7 @@ struct ReminderSettingsView: View {
                                 .font(.caption)
                         } icon: {
                             Image(systemName: "info.circle")
-                                .foregroundColor(.blue)
+                                .foregroundColor(AppTheme.Colors.primaryAction)
                         }
                     }
                     .foregroundColor(.secondary)
@@ -191,6 +192,8 @@ struct ReminderSettingsView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(AppTheme.Colors.appBackground)
         .navigationTitle("Feeding Reminders")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -210,7 +213,10 @@ struct ReminderSettingsView: View {
     }
     
     // MARK: - Helper Methods
-    
+
+    // Newborn (~1.5h) through older baby (~6h) feeding intervals
+    private static let allIntervalOptions: [Double] = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 6.0]
+
     private var statusText: String {
         switch notificationManager.authorizationStatus {
         case .authorized:
@@ -229,10 +235,13 @@ struct ReminderSettingsView: View {
     }
     
     private func formatInterval(_ hours: Double) -> String {
-        if hours.truncatingRemainder(dividingBy: 1) == 0 {
-            return "\(Int(hours)) hours"
+        let totalMinutes = Int(hours * 60)
+        let h = totalMinutes / 60
+        let m = totalMinutes % 60
+        if m == 0 {
+            return h == 1 ? "1 hour" : "\(h) hours"
         } else {
-            return "\(hours) hours"
+            return "\(h) hr \(m) min"
         }
     }
     

@@ -70,6 +70,8 @@ struct EditEntryView: View {
                         .focused($focusedField, equals: .notes)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.Colors.appBackground)
             .dismissKeyboardOnTap()
             .navigationTitle("Edit Entry")
             .navigationBarTitleDisplayMode(.inline)
@@ -118,7 +120,7 @@ struct EditEntryView: View {
                 }
 
                 Slider(value: $duration, in: 0...3600, step: 60)
-                    .accentColor(.pink)
+                    .tint(AppTheme.Colors.breastFeeding)
             }
 
             // Bottle/Formula feeding specific

@@ -46,6 +46,11 @@ enum EntryWrapper: Codable, Identifiable, Equatable {
 class DataStore: ObservableObject {
     @Published var entries: [EntryWrapper] = []
 
+    // Set to true while we're applying entries received FROM iCloud.
+    // CloudKitManager checks this flag to prevent re-uploading data it just downloaded
+    // (which would create an infinite sync loop).
+    var isApplyingInboundSync: Bool = false
+
     private let userDefaultsKey = "BabyTrackerEntries"
     private let backupFileURL: URL
 
@@ -254,6 +259,29 @@ class DataStore: ObservableObject {
         Task {
             await NotificationManager.shared.scheduleReminder(for: lastFeedingTime, settings: settings)
         }
+    }
+
+    // MARK: - Inbound Sync
+
+    // Called by CloudKitManager when new entries arrive from iCloud.
+    // isApplyingInboundSync = true tells the Combine observer in CloudKitManager
+    // "I'm updating entries right now because of an iCloud download — do NOT
+    // upload these back or we'll loop forever."
+    //
+    // 📖 SWIFT CONCEPT: defer
+    // `defer { }` runs its block when the function exits, no matter what path
+    // the code takes (early return, throw, normal exit). Perfect for cleanup.
+    func applyInboundEntries(_ inboundEntries: [EntryWrapper]) {
+        isApplyingInboundSync = true
+        defer { isApplyingInboundSync = false }
+
+        let existingIDs = Set(entries.map { $0.id })
+        let newEntries  = inboundEntries.filter { !existingIDs.contains($0.id) }
+        guard !newEntries.isEmpty else { return }
+
+        entries.append(contentsOf: newEntries)
+        entries.sort { $0.timestamp > $1.timestamp }
+        saveData()
     }
 
     // MARK: - Export

@@ -10,6 +10,9 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var dataStore: DataStore
 
+    @ObservedObject private var sync = SyncStateManager.shared
+    @State private var showingProGate = false
+
     @State private var showingDeleteConfirmation = false
     @State private var deleteTimeframe: DeleteTimeframe = .all
     @State private var showingExportView = false
@@ -26,26 +29,64 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
+                // Partner Sync Section
+                Section(header: Text("Pro Features")) {
+                    if sync.isPro {
+                        NavigationLink(destination: PartnerSyncView().environmentObject(dataStore)) {
+                            HStack {
+                                Image(systemName: sync.isPartnerConnected ? "person.2.fill" : "person.2")
+                                    .foregroundColor(AppTheme.Colors.primaryAction)
+                                Text("Partner Sync")
+                                Spacer()
+                                // Tiny sync status badge next to the row
+                                Image(systemName: sync.syncStatus.iconName)
+                                    .font(.caption)
+                                    .foregroundColor(sync.syncStatus.color)
+                            }
+                        }
+                    } else {
+                        Button {
+                            showingProGate = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "person.2")
+                                    .foregroundColor(AppTheme.Colors.primaryAction)
+                                Text("Partner Sync")
+                                Spacer()
+                                Text("PRO")
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(AppTheme.Colors.primaryAction)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                }
+
                 // Reminders Section
                 Section(header: Text("Reminders")) {
                     NavigationLink(destination: ReminderSettingsView()) {
                         HStack {
                             Image(systemName: "bell.fill")
+                                .foregroundColor(AppTheme.Colors.primaryAction)
                             Text("Feeding Reminders")
                         }
                     }
                 }
-                
+
                 // Export Section
                 Section(header: Text("Export")) {
                     Button(action: { showingExportView = true }) {
                         HStack {
                             Image(systemName: "square.and.arrow.up")
+                                .foregroundColor(AppTheme.Colors.bottleFeeding)
                             Text("Export Data")
                             Spacer()
                             Image(systemName: "chevron.right")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(AppTheme.Colors.tertiaryText)
                         }
                     }
                 }
@@ -75,14 +116,14 @@ struct SettingsView: View {
                         Text("Total Entries")
                         Spacer()
                         Text("\(dataStore.entries.count)")
-                            .foregroundColor(.secondary)
+                            .foregroundColor(AppTheme.Colors.secondaryText)
                     }
 
                     HStack {
                         Text("Version")
                         Spacer()
                         Text(AppVersionManager.shared.currentVersion)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(AppTheme.Colors.secondaryText)
                     }
                     
                     #if DEBUG
@@ -92,7 +133,7 @@ struct SettingsView: View {
                         Text("Review Requests")
                         Spacer()
                         Text("\(reviewStatus.requestCount)/3")
-                            .foregroundColor(.secondary)
+                            .foregroundColor(AppTheme.Colors.secondaryText)
                     }
                     
                     if let lastRequest = reviewStatus.lastRequestDate {
@@ -101,7 +142,7 @@ struct SettingsView: View {
                             Spacer()
                             Text(lastRequest, style: .date)
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(AppTheme.Colors.secondaryText)
                         }
                     }
                     
@@ -119,9 +160,11 @@ struct SettingsView: View {
                 Section {
                     Text("This app helps you track your baby's feeding and diaper changes. All data is stored securely on your device.")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppTheme.Colors.secondaryText)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.Colors.appBackground)
             .navigationTitle("Settings")
             .confirmationDialog(
                 "Delete \(deleteTimeframe.rawValue)?",
@@ -137,6 +180,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingExportView) {
                 ExportView()
+            }
+            .sheet(isPresented: $showingProGate) {
+                ProGateView()
             }
             .alert("Data Deleted", isPresented: $showingDeleteSuccess) {
                 Button("OK", role: .cancel) { }

@@ -91,19 +91,19 @@ struct ExportView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
                                     Image(systemName: "envelope.fill")
-                                        .foregroundColor(.blue)
+                                        .foregroundColor(AppTheme.Colors.bottleFeeding)
                                         .frame(width: 20)
                                     Text("Email app")
                                 }
                                 HStack {
                                     Image(systemName: "message.fill")
-                                        .foregroundColor(.green)
+                                        .foregroundColor(AppTheme.Colors.primaryAction)
                                         .frame(width: 20)
                                     Text("WhatsApp or Messages")
                                 }
                                 HStack {
                                     Image(systemName: "doc.text.fill")
-                                        .foregroundColor(.orange)
+                                        .foregroundColor(AppTheme.Colors.formulaFeeding)
                                         .frame(width: 20)
                                     Text("Notes or any text app")
                                 }
@@ -113,6 +113,8 @@ struct ExportView: View {
                         }
                     }
                 }
+                .scrollContentBackground(.hidden)
+                .background(AppTheme.Colors.appBackground)
 
                 // Copy to clipboard button
                 VStack(spacing: 0) {
@@ -127,19 +129,15 @@ struct ExportView: View {
                                 Image(systemName: "doc.on.clipboard.fill")
                                     .font(.title3)
                                 Text("Copy \(selectedFormat.rawValue) to Clipboard")
-                                    .font(.headline)
+                                    .font(AppTheme.Typography.bodyLarge.weight(.semibold))
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(dataStore.entries.isEmpty || isExporting ? Color.gray : Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
                     }
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(dataStore.entries.isEmpty || isExporting)
                     .padding()
                 }
-                .background(Color(.systemGroupedBackground))
+                .background(AppTheme.Colors.appBackground)
             }
             .navigationTitle("Export Data")
             .navigationBarTitleDisplayMode(.inline)

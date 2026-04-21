@@ -2,48 +2,49 @@
 //  StatsCardView.swift
 //  MomBabyLogger
 //
-//  Reusable stats card component
-//
 
 import SwiftUI
 
 struct StatsCardView: View {
-    let icon: String           // SF Symbol name
-    let title: String          // e.g., "Breast Feedings"
-    let count: Int             // Main number
-    let subtitle: String?      // e.g., "120 min total"
-    let color: Color           // Theme color for the card
+    let icon: String
+    let title: String
+    let count: Int
+    let subtitle: String?
+    let color: Color
 
     var body: some View {
-        VStack(spacing: 12) {
-            // Icon
+        VStack(spacing: 10) {
+            Rectangle()
+                .frame(height: 3)
+                .foregroundColor(color)
+                .cornerRadius(AppTheme.Radius.sm)
+
             Image(systemName: icon)
-                .font(.system(size: 32))
+                .font(.system(size: 26, weight: .medium))
                 .foregroundColor(color)
 
-            // Count
             Text("\(count)")
-                .font(.system(size: 36, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
+                .font(AppTheme.Typography.displayMedium)
+                .foregroundColor(color)
 
-            // Title
             Text(title)
-                .font(.subheadline)
+                .font(AppTheme.Typography.bodyMedium)
                 .fontWeight(.medium)
-                .foregroundColor(.secondary)
+                .foregroundColor(AppTheme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
 
-            // Subtitle (if provided)
             if let subtitle = subtitle {
                 Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(AppTheme.Typography.labelSmall)
+                    .foregroundColor(AppTheme.Colors.tertiaryText)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding()
-        .background(color.opacity(0.1))
-        .cornerRadius(16)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 16)
+        .background(color.opacity(0.10))
+        .cornerRadius(AppTheme.Radius.card)
+        .modifier(CardShadow())
     }
 }
 
@@ -51,19 +52,19 @@ struct StatsCardView: View {
     VStack(spacing: 16) {
         StatsCardView(
             icon: "heart.fill",
-            title: "Breast Feedings",
+            title: "Breast",
             count: 8,
-            subtitle: "120 min total",
-            color: .pink
+            subtitle: "120 min",
+            color: AppTheme.Colors.breastFeeding
         )
-
         StatsCardView(
             icon: "drop.fill",
-            title: "Wet Diapers",
+            title: "Wet",
             count: 6,
             subtitle: nil,
-            color: .blue
+            color: AppTheme.Colors.wetDiaper
         )
     }
     .padding()
+    .background(AppTheme.Colors.appBackground)
 }

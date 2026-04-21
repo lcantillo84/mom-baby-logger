@@ -17,29 +17,32 @@ struct WhatsNewView: View {
                 VStack(spacing: 24) {
                     // Header
                     VStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 50))
-                            .foregroundColor(.blue)
-                            .padding(.top, 20)
+                        ZStack {
+                            Circle()
+                                .fill(AppTheme.Colors.primaryAction.opacity(0.12))
+                                .frame(width: 90, height: 90)
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 40, weight: .light))
+                                .foregroundColor(AppTheme.Colors.primaryAction)
+                        }
+                        .padding(.top, 20)
 
                         Text("What's New")
-                            .font(.title2)
-                            .fontWeight(.bold)
+                            .font(AppTheme.Typography.titleMedium)
+                            .foregroundColor(AppTheme.Colors.primaryText)
 
                         Text("Version \(content.version)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .font(AppTheme.Typography.bodySmall)
+                            .foregroundColor(AppTheme.Colors.secondaryText)
                     }
                     .padding(.bottom, 10)
 
-                    // Title
                     Text(content.title)
-                        .font(.title3)
-                        .fontWeight(.semibold)
+                        .font(AppTheme.Typography.titleSmall)
+                        .foregroundColor(AppTheme.Colors.primaryText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
 
-                    // Features List
                     VStack(spacing: 20) {
                         ForEach(content.features) { feature in
                             FeatureRow(feature: feature)
@@ -50,23 +53,18 @@ struct WhatsNewView: View {
 
                     Spacer(minLength: 20)
 
-                    // Continue Button
                     Button {
                         AppVersionManager.shared.markWhatsNewAsSeen()
                         dismiss()
                     } label: {
                         Text("Continue")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue)
-                            .cornerRadius(12)
                     }
+                    .buttonStyle(PrimaryButtonStyle())
                     .padding(.horizontal, 20)
                     .padding(.bottom, 20)
                 }
             }
+            .background(AppTheme.Colors.appBackground.ignoresSafeArea())
             .navigationBarHidden(true)
         }
         .interactiveDismissDisabled()
@@ -78,22 +76,22 @@ struct FeatureRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
-            // Icon
             Image(systemName: feature.icon)
-                .font(.system(size: 28))
-                .foregroundColor(.blue)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundColor(AppTheme.Colors.primaryAction)
                 .frame(width: 50, height: 50)
-                .background(Color.blue.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(AppTheme.Colors.primaryAction.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md))
 
-            // Text
             VStack(alignment: .leading, spacing: 4) {
                 Text(feature.title)
-                    .font(.headline)
+                    .font(AppTheme.Typography.bodyLarge)
+                    .fontWeight(.semibold)
+                    .foregroundColor(AppTheme.Colors.primaryText)
 
                 Text(feature.description)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(AppTheme.Typography.bodySmall)
+                    .foregroundColor(AppTheme.Colors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 

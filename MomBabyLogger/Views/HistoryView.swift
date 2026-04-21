@@ -29,13 +29,14 @@ struct HistoryView: View {
                             Section(header: dayHeader(for: dayGroup.date)) {
                                 ForEach(dayGroup.entries) { entry in
                                     ActivityRowView(entry: entry)
+                                        .listRowBackground(AppTheme.Colors.cardBackground)
                                         .swipeActions(edge: .trailing) {
                                             Button {
                                                 entryToEdit = entry
                                             } label: {
                                                 Label("Edit", systemImage: "pencil")
                                             }
-                                            .tint(.blue)
+                                            .tint(AppTheme.Colors.primaryAction)
 
                                             Button(role: .destructive) {
                                                 deleteEntry(entry)
@@ -48,12 +49,15 @@ struct HistoryView: View {
                         }
                     }
                     .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
+                    .background(AppTheme.Colors.appBackground)
                     .refreshable {
                         await refresh()
                     }
                 }
             }
             .navigationTitle("History")
+            .background(AppTheme.Colors.appBackground.ignoresSafeArea())
         }
         .navigationViewStyle(.stack)
         .sheet(item: $entryToEdit) { entry in
@@ -65,39 +69,45 @@ struct HistoryView: View {
     // MARK: - Views
 
     private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "clock.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.secondary)
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.secondaryAction.opacity(0.3))
+                    .frame(width: 100, height: 100)
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 44, weight: .light))
+                    .foregroundColor(AppTheme.Colors.primaryAction)
+            }
 
             Text("No Activities Yet")
-                .font(.title2)
-                .fontWeight(.semibold)
+                .font(AppTheme.Typography.titleSmall)
+                .foregroundColor(AppTheme.Colors.primaryText)
 
             Text("Start tracking feeding and diaper changes to see them here")
-                .font(.body)
-                .foregroundColor(.secondary)
+                .font(AppTheme.Typography.bodySmall)
+                .foregroundColor(AppTheme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.Colors.appBackground.ignoresSafeArea())
     }
 
     private func dayHeader(for date: Date) -> some View {
         HStack {
             Text(dateFormatter.string(from: date))
-                .font(.headline)
-                .foregroundColor(.primary)
+                .font(AppTheme.Typography.sectionHeader)
+                .foregroundColor(AppTheme.Colors.primaryText)
 
             Spacer()
 
             Text("\(entriesCount(for: date)) activities")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(AppTheme.Typography.labelSmall)
+                .foregroundColor(AppTheme.Colors.secondaryText)
         }
     }
 
-    // MARK: - Helper Functions
+    // MARK: - Helpers
 
     private func entriesCount(for date: Date) -> Int {
         let calendar = Calendar.current
@@ -114,7 +124,6 @@ struct HistoryView: View {
 
     private func refresh() async {
         isRefreshing = true
-        // Simulate a small delay for refresh animation
         try? await Task.sleep(nanoseconds: 500_000_000)
         isRefreshing = false
     }

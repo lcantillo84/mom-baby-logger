@@ -2,8 +2,6 @@
 //  DailyStatsSection.swift
 //  MomBabyLogger
 //
-//  Container view that displays all daily stats using StatsCardView
-//
 
 import SwiftUI
 
@@ -12,84 +10,70 @@ struct DailyStatsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Section header
             Text("Today's Summary")
-                .font(.title2)
-                .fontWeight(.bold)
+                .font(AppTheme.Typography.titleMedium)
+                .foregroundColor(AppTheme.Colors.primaryText)
                 .padding(.horizontal)
 
             if stats.totalFeedings == 0 && stats.totalDiaperChanges == 0 {
-                // Empty state
                 emptyStateView
             } else {
-                // Grid of stats cards
                 LazyVGrid(columns: [
-                    GridItem(.flexible(), spacing: 16),
-                    GridItem(.flexible(), spacing: 16)
-                ], spacing: 16) {
-                    // Breast feeding card
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ], spacing: 12) {
                     if stats.breastFeedingCount > 0 {
                         StatsCardView(
                             icon: "heart.fill",
                             title: "Breast",
                             count: stats.breastFeedingCount,
                             subtitle: "\(stats.breastFeedingTotalMinutes) min",
-                            color: .pink
+                            color: AppTheme.Colors.breastFeeding
                         )
                     }
-
-                    // Bottle feeding card
                     if stats.bottleFeedingCount > 0 {
                         StatsCardView(
                             icon: "drop.fill",
                             title: "Bottle",
                             count: stats.bottleFeedingCount,
                             subtitle: String(format: "%.1f oz", stats.bottleFeedingTotalOz),
-                            color: .blue
+                            color: AppTheme.Colors.bottleFeeding
                         )
                     }
-
-                    // Formula feeding card
                     if stats.formulaFeedingCount > 0 {
                         StatsCardView(
                             icon: "drop.triangle.fill",
                             title: "Formula",
                             count: stats.formulaFeedingCount,
                             subtitle: String(format: "%.1f oz", stats.formulaFeedingTotalOz),
-                            color: .orange
+                            color: AppTheme.Colors.formulaFeeding
                         )
                     }
-
-                    // Poop diaper card
                     if stats.poopCount > 0 {
                         StatsCardView(
                             icon: "leaf.fill",
                             title: "Poop",
                             count: stats.poopCount,
                             subtitle: nil,
-                            color: .brown
+                            color: AppTheme.Colors.poopDiaper
                         )
                     }
-
-                    // Wet diaper card
                     if stats.wetCount > 0 {
                         StatsCardView(
                             icon: "drop.triangle",
                             title: "Wet",
                             count: stats.wetCount,
                             subtitle: nil,
-                            color: .cyan
+                            color: AppTheme.Colors.wetDiaper
                         )
                     }
-
-                    // Mixed diaper card
                     if stats.mixedCount > 0 {
                         StatsCardView(
                             icon: "drop.triangle.fill",
                             title: "Both",
                             count: stats.mixedCount,
                             subtitle: nil,
-                            color: .purple
+                            color: AppTheme.Colors.mixedDiaper
                         )
                     }
                 }
@@ -100,15 +84,21 @@ struct DailyStatsSection: View {
 
     private var emptyStateView: some View {
         VStack(spacing: 12) {
-            Image(systemName: "calendar")
-                .font(.system(size: 50))
-                .foregroundColor(.secondary)
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.secondaryAction.opacity(0.3))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "calendar")
+                    .font(.system(size: 34, weight: .light))
+                    .foregroundColor(AppTheme.Colors.primaryAction)
+            }
             Text("No activities yet today")
-                .font(.headline)
-                .foregroundColor(.secondary)
+                .font(AppTheme.Typography.bodyLarge)
+                .fontWeight(.medium)
+                .foregroundColor(AppTheme.Colors.secondaryText)
             Text("Start tracking to see your daily summary")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(AppTheme.Typography.labelSmall)
+                .foregroundColor(AppTheme.Colors.tertiaryText)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
@@ -118,15 +108,13 @@ struct DailyStatsSection: View {
 #Preview {
     let sampleEntries: [EntryWrapper] = [
         .feeding(FeedingEntry(type: .breastFeeding, side: .left, duration: 900)),
-        .feeding(FeedingEntry(type: .breastFeeding, side: .right, duration: 1200)),
         .feeding(FeedingEntry(type: .bottleFeeding, amount: 4.0)),
         .diaper(DiaperEntry(type: .wetDiaper)),
         .diaper(DiaperEntry(type: .poopDiaper)),
     ]
-
     let stats = DailyStats(from: sampleEntries)
-
     return ScrollView {
         DailyStatsSection(stats: stats)
     }
+    .background(AppTheme.Colors.appBackground)
 }

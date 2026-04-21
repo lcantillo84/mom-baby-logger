@@ -8,7 +8,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var dataStore = DataStore()
+    // DataStore is now owned by MomBabyLoggerApp and passed down via environment.
+    // @EnvironmentObject reads it from there instead of creating a second copy.
+    @EnvironmentObject private var dataStore: DataStore
     @State private var showWhatsNew = false
     @State private var whatsNewContent: WhatsNewContent?
 
@@ -39,7 +41,7 @@ struct ContentView: View {
                     Label("Settings", systemImage: "gear")
                 }
         }
-        .environmentObject(dataStore)
+        .tint(AppTheme.Colors.tabActive)
         .onAppear {
             checkForAppUpdate()
         }
@@ -69,4 +71,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+        .environmentObject(DataStore())
 }

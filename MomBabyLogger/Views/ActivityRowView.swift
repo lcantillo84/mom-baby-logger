@@ -2,8 +2,6 @@
 //  ActivityRowView.swift
 //  MomBabyLogger
 //
-//  Created by Lilianne Cantillo on 11/9/25.
-//
 
 import SwiftUI
 
@@ -18,28 +16,27 @@ struct ActivityRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Icon
             Image(systemName: entry.type.icon)
-                .font(.title2)
+                .font(.system(size: 18, weight: .medium))
                 .foregroundColor(iconColor)
                 .frame(width: 40, height: 40)
-                .background(iconColor.opacity(0.15))
+                .background(iconColor.opacity(0.18))
                 .clipShape(Circle())
 
-            // Content
             VStack(alignment: .leading, spacing: 4) {
                 Text(timeFormatter.string(from: entry.timestamp))
-                    .font(.headline)
+                    .font(AppTheme.Typography.bodyMedium)
+                    .fontWeight(.semibold)
+                    .foregroundColor(AppTheme.Colors.primaryText)
 
                 Text(entry.displayText)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(AppTheme.Typography.bodySmall)
+                    .foregroundColor(AppTheme.Colors.secondaryText)
 
-                // Show notes if available
                 if let notes = entryNotes, !notes.isEmpty {
                     Text(notes)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(AppTheme.Typography.labelSmall)
+                        .foregroundColor(AppTheme.Colors.tertiaryText)
                         .lineLimit(2)
                 }
             }
@@ -52,15 +49,17 @@ struct ActivityRowView: View {
     private var iconColor: Color {
         switch entry.type {
         case .breastFeeding:
-            return .pink
-        case .bottleFeeding, .formulaFeeding:
-            return .blue
+            return AppTheme.Colors.breastFeeding
+        case .bottleFeeding:
+            return AppTheme.Colors.bottleFeeding
+        case .formulaFeeding:
+            return AppTheme.Colors.formulaFeeding
         case .wetDiaper:
-            return .cyan
+            return AppTheme.Colors.wetDiaper
         case .poopDiaper:
-            return .brown
+            return AppTheme.Colors.poopDiaper
         case .mixedDiaper:
-            return .purple
+            return AppTheme.Colors.mixedDiaper
         }
     }
 
