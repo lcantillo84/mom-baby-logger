@@ -88,28 +88,53 @@ class SharingManager: ObservableObject {
         defer { isLoading = false }
         errorMessage = nil
 
+        // Check iCloud account status before trying anything with CloudKit.
+        // CKError.notAuthenticated fires when the device isn't signed into iCloud
+        // or iCloud Drive is disabled — give a clear message instead of a raw error.
+        do {
+            let status = try await container.accountStatus()
+            guard status == .available else {
+                errorMessage = iCloudAccountMessage(for: status)
+                return
+            }
+        } catch {
+            errorMessage = "iCloud is not available. Please check your iCloud settings and try again."
+            return
+        }
+
         do {
             let share = try await fetchOrCreateShare()
             activeShare = share
 
-            // UICloudSharingController is Apple's ready-made share sheet
-            // specifically for CloudKit. Shows participant list + send options.
             let sharingController = UICloudSharingController(share: share, container: container)
             sharingController.delegate = ShareDelegate.shared
-            sharingController.availablePermissions = [.allowReadWrite]  // partner can add entries
+            sharingController.availablePermissions = [.allowReadWrite]
 
-            // Present it on screen.
-            // 📖 SWIFT CONCEPT: DispatchQueue.main.async
-            // UIKit (the view layer) must always be touched on the main thread.
-            // We're already @MainActor here but UICloudSharingController's
-            // completion can arrive on any thread, so the presentation must
-            // explicitly dispatch to main.
             await MainActor.run {
                 viewController.present(sharingController, animated: true)
             }
 
+        } catch let ckError as CKError where ckError.code == .notAuthenticated {
+            errorMessage = "Partner Sync requires iCloud. Go to Settings → [your name] → iCloud and make sure iCloud Drive is turned on for this app."
+        } catch let ckError as CKError {
+            errorMessage = "iCloud error (\(ckError.code.rawValue)): \(ckError.localizedDescription)"
         } catch {
             errorMessage = "Could not create share: \(error.localizedDescription)"
+        }
+    }
+
+    private func iCloudAccountMessage(for status: CKAccountStatus) -> String {
+        switch status {
+        case .noAccount:
+            return "No iCloud account found. Go to Settings → Sign in to your iPhone to set up iCloud."
+        case .restricted:
+            return "iCloud is restricted on this device (parental controls or MDM). Partner Sync is unavailable."
+        case .couldNotDetermine:
+            return "Could not reach iCloud. Check your internet connection and try again."
+        case .temporarilyUnavailable:
+            return "iCloud is temporarily unavailable. Please try again in a moment."
+        default:
+            return "iCloud is not available. Please check your iCloud settings."
         }
     }
 
@@ -170,9 +195,29 @@ class SharingManager: ObservableObject {
 
     // ─── Private Helpers ───────────────────────────────────────────────────
 
+    // Ensures MommysLogZone exists before we try to create records in it.
+    // CloudKit returns notAuthenticated (confusingly) when writing to a
+    // zone that hasn't been created yet.
+    private func ensureZoneExists() async throws {
+        let op = CKModifyRecordZonesOperation(recordZonesToSave: [zone], recordZoneIDsToDelete: nil)
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            op.modifyRecordZonesResultBlock = { result in
+                switch result {
+                case .success: cont.resume()
+                case .failure(let error): cont.resume(throwing: error)
+                }
+            }
+            privateDB.add(op)
+        }
+    }
+
     private func fetchOrCreateShare() async throws -> CKShare {
         // Reuse existing share if we have one.
         if let existing = activeShare { return existing }
+
+        // Zone must exist before we can save any records (including a CKShare).
+        // CloudKit returns notAuthenticated — confusingly — when the zone is missing.
+        try await ensureZoneExists()
 
         // CKShare needs to be associated with a "root record."
         // We use a dedicated metadata record (not an entry) as the share root.

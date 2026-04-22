@@ -33,9 +33,9 @@ struct MomBabyLoggerApp: App {
             ContentView()
                 .environmentObject(dataStore)
                 .onAppear {
-                    // Wire CloudKit sync as soon as the app is on screen.
-                    // configure() is a no-op if the user is not Pro.
                     CloudKitManager.shared.configure(with: dataStore)
+                    // Start listening for subscription renewals/cancellations.
+                    SubscriptionManager.shared.startTransactionListener()
                 }
         }
     }

@@ -20,15 +20,137 @@
 // ─────────────────────────────────────────────────────────────
 
 import SwiftUI
+import StoreKit
+import Observation
+
+// ─────────────────────────────────────────────────────────────
+// SubscriptionManager — handles all real App Store payments.
+// Uses @Observable (iOS 17+) which avoids ObservableObject issues.
+// ─────────────────────────────────────────────────────────────
+@MainActor
+@Observable
+class SubscriptionManager {
+
+    static let shared = SubscriptionManager()
+    private let productID = "lilycantilloapp.mommysblog.subscription.pro"
+
+    var product: Product?
+    var isPurchasing: Bool = false
+    var errorMessage: String?
+
+    private var transactionListenerTask: Task<Void, Never>?
+    private init() {}
+
+    func loadProduct() async {
+        do {
+            let products = try await Product.products(for: [productID])
+            product = products.first
+        } catch {
+            errorMessage = "Could not load subscription details. Check your internet connection."
+        }
+    }
+
+    func purchase() async -> Bool {
+        guard let product else {
+            errorMessage = "Product not loaded yet. Please try again."
+            return false
+        }
+        isPurchasing = true
+        defer { isPurchasing = false }
+        errorMessage = nil
+        do {
+            let result = try await product.purchase()
+            switch result {
+            case .success(let verification):
+                let transaction = try checkVerified(verification)
+                SyncStateManager.shared.activatePro()
+                await transaction.finish()
+                return true
+            case .userCancelled:
+                return false
+            case .pending:
+                errorMessage = "Purchase is pending approval."
+                return false
+            @unknown default:
+                return false
+            }
+        } catch {
+            errorMessage = "Purchase failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func restore() async {
+        isPurchasing = true
+        defer { isPurchasing = false }
+        errorMessage = nil
+        var restored = false
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let transaction) = result,
+               transaction.productID == productID,
+               transaction.revocationDate == nil {
+                SyncStateManager.shared.activatePro()
+                restored = true
+                break
+            }
+        }
+        if !restored {
+            try? await AppStore.sync()
+            for await result in Transaction.currentEntitlements {
+                if case .verified(let transaction) = result,
+                   transaction.productID == productID,
+                   transaction.revocationDate == nil {
+                    SyncStateManager.shared.activatePro()
+                    restored = true
+                    break
+                }
+            }
+        }
+        if !restored {
+            errorMessage = "No active subscription found for this Apple ID."
+        }
+    }
+
+    func startTransactionListener() {
+        transactionListenerTask?.cancel()
+        transactionListenerTask = Task(priority: .background) {
+            for await result in Transaction.updates {
+                guard case .verified(let transaction) = result,
+                      transaction.productID == self.productID
+                else { continue }
+                if transaction.revocationDate != nil {
+                    SyncStateManager.shared.deactivatePro()
+                } else if let expiration = transaction.expirationDate, expiration < Date() {
+                    SyncStateManager.shared.deactivatePro()
+                } else {
+                    SyncStateManager.shared.activatePro()
+                }
+                await transaction.finish()
+            }
+        }
+    }
+
+    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .unverified: throw StoreError.failedVerification
+        case .verified(let value): return value
+        }
+    }
+}
+
+private enum StoreError: LocalizedError {
+    case failedVerification
+    var errorDescription: String? { "Transaction verification failed. Please contact support." }
+}
 
 struct ProGateView: View {
 
-    // 📖 SWIFT CONCEPT: @ObservedObject
-    // SyncStateManager.shared is the same object everywhere in the app.
-    // @ObservedObject tells SwiftUI "watch this; redraw me if isPro changes."
     @ObservedObject private var sync = SyncStateManager.shared
+    @State private var subscriptions = SubscriptionManager.shared
 
     @Environment(\.dismiss) private var dismiss
+
+    @State private var errorMessage: String?
 
     // The features list — easy to update without touching layout code.
     private let features: [(icon: String, title: String, detail: String)] = [
@@ -133,7 +255,8 @@ struct ProGateView: View {
 
     private var pricingSection: some View {
         VStack(spacing: 8) {
-            Text("$2.99 / month")
+            // Show the real App Store price when loaded, fallback to hardcoded price
+            Text(subscriptions.product.map { "\($0.displayPrice) / month" } ?? "$2.99 / month")
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundColor(AppTheme.Colors.primaryText)
             Text("Cancel anytime • 7-day free trial")
@@ -144,32 +267,45 @@ struct ProGateView: View {
         .frame(maxWidth: .infinity)
         .background(AppTheme.Colors.primaryAction.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.card))
+        .task { await subscriptions.loadProduct() }
     }
 
     private var actionsSection: some View {
         VStack(spacing: 12) {
-            // 📖 SWIFT CONCEPT: Button with action closure
-            // The { } after Button is the "what to do when tapped" block.
-            // We call activatePro() here. In production this will launch StoreKit.
-            Button {
-                // TODO Session 5: Replace with StoreKit purchase flow
-                // For now: instantly grant Pro so you can test sync features.
-                SyncStateManager.shared.activatePro()
-                dismiss()
-            } label: {
-                Text("Start Free Trial")
+            if let error = subscriptions.errorMessage ?? errorMessage {
+                Text(error)
+                    .font(AppTheme.Typography.labelSmall)
+                    .foregroundColor(AppTheme.Colors.destructiveAction)
+                    .multilineTextAlignment(.center)
             }
-            .buttonStyle(PrimaryButtonStyle())
 
             Button {
-                // TODO Session 5: StoreKit restore purchases
-                SyncStateManager.shared.activatePro()
-                dismiss()
+                Task {
+                    let success = await subscriptions.purchase()
+                    if success { dismiss() }
+                }
+            } label: {
+                if subscriptions.isPurchasing {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Text("Start Free Trial")
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(subscriptions.isPurchasing)
+
+            Button {
+                Task {
+                    await subscriptions.restore()
+                    if SyncStateManager.shared.isPro { dismiss() }
+                }
             } label: {
                 Text("Restore Purchase")
                     .font(AppTheme.Typography.bodyMedium)
                     .foregroundColor(AppTheme.Colors.primaryAction)
             }
+            .disabled(subscriptions.isPurchasing)
 
             Text("Privacy Policy • Terms of Service")
                 .font(AppTheme.Typography.labelSmall)
