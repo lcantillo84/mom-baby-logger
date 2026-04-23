@@ -130,6 +130,26 @@ class SubscriptionManager {
         }
     }
 
+    // Called once on every app launch to silently restore Pro for users
+    // who reinstalled, switched phones, or whose subscription renewed overnight.
+    func checkCurrentEntitlements() async {
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result,
+                  transaction.productID == productID,
+                  transaction.revocationDate == nil
+            else { continue }
+            let isExpired = transaction.expirationDate.map { $0 < Date() } ?? false
+            if isExpired {
+                SyncStateManager.shared.deactivatePro()
+            } else {
+                SyncStateManager.shared.activatePro()
+            }
+            return
+        }
+        // No active entitlement found — only deactivate if they weren't already marked Pro
+        // (avoids flickering on first launch before store responds)
+    }
+
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .unverified: throw StoreError.failedVerification
@@ -307,9 +327,13 @@ struct ProGateView: View {
             }
             .disabled(subscriptions.isPurchasing)
 
-            Text("Privacy Policy • Terms of Service")
-                .font(AppTheme.Typography.labelSmall)
-                .foregroundColor(AppTheme.Colors.tertiaryText)
+            HStack(spacing: 4) {
+                Link("Privacy Policy", destination: URL(string: "https://lcantillo84.github.io/mom-baby-logger/privacy-policy.html")!)
+                Text("•")
+                Link("Terms of Use", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+            }
+            .font(AppTheme.Typography.labelSmall)
+            .foregroundColor(AppTheme.Colors.primaryAction)
         }
     }
 }

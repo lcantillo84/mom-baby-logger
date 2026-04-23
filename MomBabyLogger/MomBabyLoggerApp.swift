@@ -34,8 +34,8 @@ struct MomBabyLoggerApp: App {
                 .environmentObject(dataStore)
                 .onAppear {
                     CloudKitManager.shared.configure(with: dataStore)
-                    // Start listening for subscription renewals/cancellations.
                     SubscriptionManager.shared.startTransactionListener()
+                    Task { await SubscriptionManager.shared.checkCurrentEntitlements() }
                 }
         }
     }
