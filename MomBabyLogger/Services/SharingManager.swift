@@ -255,8 +255,17 @@ class SharingManager: ObservableObject {
     }
 
     private func fetchOrCreateShare() async throws -> CKShare {
-        // Reuse existing share if we have one.
-        if let existing = activeShare { return existing }
+        // Reuse existing share if we have one — but ensure permission is correct.
+        // publicPermission must be .readWrite so anyone with the URL can accept.
+        // Old shares may have been saved with the default .none, which causes
+        // "Item Unavailable" when the recipient taps the link.
+        if let existing = activeShare {
+            if existing.publicPermission != .readWrite {
+                existing.publicPermission = .readWrite
+                try? await saveUpdatedShare(existing)
+            }
+            return existing
+        }
 
         // Zone must exist before we can save any records (including a CKShare).
         // CloudKit returns notAuthenticated — confusingly — when the zone is missing.
@@ -273,6 +282,11 @@ class SharingManager: ObservableObject {
             if let shareRef = rootRecord.share,
                let shareRecord = try? await privateDB.record(for: shareRef.recordID),
                let share = shareRecord as? CKShare {
+                // Fix permission on any existing share that was saved with .none.
+                if share.publicPermission != .readWrite {
+                    share.publicPermission = .readWrite
+                    try? await saveUpdatedShare(share)
+                }
                 UserDefaults.standard.set(share.recordID.recordName, forKey: kShareRecordNameKey)
                 return share
             }
@@ -284,6 +298,8 @@ class SharingManager: ObservableObject {
 
         let share = CKShare(rootRecord: rootRecord)
         share[CKShare.SystemFieldKey.title] = "Mommy's Log" as CKRecordValue
+        // Allow anyone with the link to accept the share (required for UIActivityViewController flow).
+        share.publicPermission = .readWrite
 
         // Save both the root record and the share in one atomic operation.
         let op = CKModifyRecordsOperation(recordsToSave: [rootRecord, share])
@@ -311,6 +327,21 @@ class SharingManager: ObservableObject {
         UserDefaults.standard.set(finalShare.recordID.recordName, forKey: kShareRecordNameKey)
         SyncStateManager.shared.hasPartnerShare = true
         return finalShare
+    }
+
+    // Saves a modified CKShare back to iCloud (e.g. after correcting publicPermission).
+    private func saveUpdatedShare(_ share: CKShare) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            let op = CKModifyRecordsOperation(recordsToSave: [share])
+            op.savePolicy = .changedKeys
+            op.modifyRecordsResultBlock = { result in
+                switch result {
+                case .success: cont.resume()
+                case .failure(let error): cont.resume(throwing: error)
+                }
+            }
+            self.privateDB.add(op)
+        }
     }
 }
 

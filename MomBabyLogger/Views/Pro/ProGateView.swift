@@ -175,8 +175,9 @@ struct ProGateView: View {
     // The features list — easy to update without touching layout code.
     private let features: [(icon: String, title: String, detail: String)] = [
         ("person.2.fill",        "Partner & Nanny Sync",   "Share live logs with anyone helping with baby"),
+        ("chart.bar.fill",       "Daily Insights",         "Time since last feeding, trends & daily averages"),
+        ("calendar.badge.clock", "Weekly Charts",          "7-day feeding and diaper charts at a glance"),
         ("icloud.fill",          "iCloud Backup",          "Baby's data is safe even if you lose your phone"),
-        ("arrow.clockwise",      "Sync History",           "Entries appear on all your devices instantly"),
         ("lock.shield.fill",     "Private & Encrypted",    "Data lives in your iCloud — we never see it"),
     ]
 

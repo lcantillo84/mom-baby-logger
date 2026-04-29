@@ -7,6 +7,8 @@ import SwiftUI
 
 struct TodayView: View {
     @EnvironmentObject var dataStore: DataStore
+    @ObservedObject private var sync = SyncStateManager.shared
+    @State private var showingProGate = false
 
     private var todayEntries: [EntryWrapper] {
         let calendar = Calendar.current
@@ -25,6 +27,12 @@ struct TodayView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     DailyStatsSection(stats: todayStats)
+
+                    ProInsightsSection(
+                        todayStats: todayStats,
+                        isPro: sync.isPro || sync.isParticipant,
+                        onUnlockTap: { showingProGate = true }
+                    )
 
                     if !todayEntries.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -54,6 +62,9 @@ struct TodayView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
+        }
+        .sheet(isPresented: $showingProGate) {
+            ProGateView()
         }
     }
 }

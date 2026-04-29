@@ -36,6 +36,11 @@ struct ContentView: View {
                     Label("History", systemImage: "clock.fill")
                 }
 
+            InsightsView()
+                .tabItem {
+                    Label("Insights", systemImage: "chart.bar.fill")
+                }
+
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")
