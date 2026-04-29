@@ -457,6 +457,12 @@ class CloudKitManager: ObservableObject {
         do {
             let sharedZones = try await sharedDB.allRecordZones()
             guard !sharedZones.isEmpty else {
+                // No shared zones means Phone 1 revoked the share.
+                // Clear participant state so Phone 2's UI reflects the disconnect.
+                SyncStateManager.shared.isParticipant = false
+                SyncStateManager.shared.isPartnerConnected = false
+                SyncStateManager.shared.hasPartnerShare = false
+                SyncStateManager.shared.deactivatePro()
                 SyncStateManager.shared.markIdle()
                 return
             }
