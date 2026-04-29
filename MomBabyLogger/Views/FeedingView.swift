@@ -28,7 +28,7 @@ struct FeedingView: View {
     @State private var manualMinutes: Double = 10
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
                     // Feeding type selector — custom chips
@@ -106,6 +106,9 @@ struct FeedingView: View {
             .background(AppTheme.Colors.appBackground.ignoresSafeArea())
             .dismissKeyboardOnTap()
             .navigationTitle("Feeding")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .keyboardDoneButton(focusedField: $focusedField)
             .sheet(isPresented: $showingBreastTimer) {
                 BreastFeedingTimerView()
@@ -119,7 +122,6 @@ struct FeedingView: View {
                 selectedSide = dataStore.lastBreastSide
             }
         }
-        .navigationViewStyle(.stack)
     }
 
     // MARK: - Breast Feeding Section

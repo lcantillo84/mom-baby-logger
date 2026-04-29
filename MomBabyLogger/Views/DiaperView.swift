@@ -17,7 +17,7 @@ struct DiaperView: View {
     @FocusState private var focusedField: FocusField?
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
                     Text("What type of diaper change?")
@@ -74,6 +74,9 @@ struct DiaperView: View {
             .background(AppTheme.Colors.appBackground.ignoresSafeArea())
             .dismissKeyboardOnTap()
             .navigationTitle("Diaper Change")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .keyboardDoneButton(focusedField: $focusedField)
             .alert("Success!", isPresented: $showingConfirmation) {
                 Button("OK", role: .cancel) { }
@@ -104,7 +107,6 @@ struct DiaperView: View {
                 }
             }
         }
-        .navigationViewStyle(.stack)
     }
 
     // MARK: - Diaper Button

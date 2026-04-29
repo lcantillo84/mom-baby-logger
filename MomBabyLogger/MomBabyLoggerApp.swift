@@ -26,6 +26,22 @@ struct MomBabyLoggerApp: App {
         tabBarAppearance.backgroundColor = UIColor(AppTheme.Colors.cardBackground)
         UITabBar.appearance().standardAppearance = tabBarAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+
+        // Fix white navigation bar headers on all iPhones — without this,
+        // iOS renders the scrollEdge appearance as transparent/white on some devices.
+        let navAppearance = UINavigationBarAppearance()
+        navAppearance.configureWithOpaqueBackground()
+        navAppearance.backgroundColor = UIColor(AppTheme.Colors.appBackground)
+        navAppearance.titleTextAttributes = [
+            .foregroundColor: UIColor(AppTheme.Colors.primaryText)
+        ]
+        navAppearance.largeTitleTextAttributes = [
+            .foregroundColor: UIColor(AppTheme.Colors.primaryText)
+        ]
+        UINavigationBar.appearance().standardAppearance = navAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
+        UINavigationBar.appearance().compactAppearance = navAppearance
+        UINavigationBar.appearance().tintColor = UIColor(AppTheme.Colors.primaryAction)
     }
 
     var body: some Scene {

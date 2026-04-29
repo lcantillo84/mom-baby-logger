@@ -27,11 +27,11 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Partner Sync Section
                 Section(header: Text("Pro Features")) {
-                    if sync.isPro {
+                    if sync.isPro || sync.isParticipant {
                         NavigationLink(destination: PartnerSyncView().environmentObject(dataStore)) {
                             HStack {
                                 Image(systemName: sync.isPartnerConnected ? "person.2.fill" : "person.2")
@@ -166,6 +166,9 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(AppTheme.Colors.appBackground)
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .confirmationDialog(
                 "Delete \(deleteTimeframe.rawValue)?",
                 isPresented: $showingDeleteConfirmation,
@@ -190,7 +193,6 @@ struct SettingsView: View {
                 Text("Successfully deleted \(deletedCount) \(deletedCount == 1 ? "entry" : "entries")")
             }
         }
-        .navigationViewStyle(.stack)
     }
 
     // MARK: - Delete Functions

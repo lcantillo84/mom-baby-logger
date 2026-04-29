@@ -19,7 +19,7 @@ struct HistoryView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if dataStore.entries.isEmpty {
                     emptyStateView
@@ -57,9 +57,11 @@ struct HistoryView: View {
                 }
             }
             .navigationTitle("History")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
             .background(AppTheme.Colors.appBackground.ignoresSafeArea())
         }
-        .navigationViewStyle(.stack)
         .sheet(item: $entryToEdit) { entry in
             EditEntryView(entry: entry)
                 .environmentObject(dataStore)

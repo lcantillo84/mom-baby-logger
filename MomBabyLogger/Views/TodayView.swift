@@ -21,7 +21,7 @@ struct TodayView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
                     DailyStatsSection(stats: todayStats)
@@ -51,9 +51,10 @@ struct TodayView: View {
             }
             .background(AppTheme.Colors.appBackground.ignoresSafeArea())
             .navigationTitle("Today")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
         }
-        .navigationViewStyle(.stack)
     }
 }
 

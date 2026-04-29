@@ -88,9 +88,6 @@ class SharingManager: ObservableObject {
         defer { isLoading = false }
         errorMessage = nil
 
-        // Check iCloud account status before trying anything with CloudKit.
-        // CKError.notAuthenticated fires when the device isn't signed into iCloud
-        // or iCloud Drive is disabled — give a clear message instead of a raw error.
         do {
             let status = try await container.accountStatus()
             guard status == .available else {
@@ -111,7 +108,11 @@ class SharingManager: ObservableObject {
             sharingController.availablePermissions = [.allowReadWrite]
 
             await MainActor.run {
-                viewController.present(sharingController, animated: true)
+                // Traverse to the topmost presented VC — presenting from root fails
+                // silently when the app is several navigation levels deep.
+                var presenter = viewController
+                while let top = presenter.presentedViewController { presenter = top }
+                presenter.present(sharingController, animated: true)
             }
 
         } catch let ckError as CKError where ckError.code == .notAuthenticated {
@@ -138,6 +139,33 @@ class SharingManager: ObservableObject {
         }
     }
 
+    // ─── Prepare Share (returns CKShare for SwiftUI sheet presentation) ──────
+
+    func prepareShare() async -> CKShare? {
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            let status = try await container.accountStatus()
+            guard status == .available else {
+                errorMessage = iCloudAccountMessage(for: status)
+                return nil
+            }
+            let share = try await fetchOrCreateShare()
+            activeShare = share
+            return share
+        } catch let ckError as CKError where ckError.code == .notAuthenticated {
+            errorMessage = "Partner Sync requires iCloud. Go to Settings → [your name] → iCloud and make sure iCloud Drive is turned on for this app."
+            return nil
+        } catch let ckError as CKError {
+            errorMessage = "iCloud error (\(ckError.code.rawValue)): \(ckError.localizedDescription)"
+            return nil
+        } catch {
+            errorMessage = "Could not prepare share: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
     // ─── Revoke / Disconnect Partner ──────────────────────────────────────
 
     func revokeShare() async {
@@ -158,6 +186,21 @@ class SharingManager: ObservableObject {
         } catch {
             errorMessage = "Could not revoke share: \(error.localizedDescription)"
         }
+    }
+
+    // ─── Leave Share (Partner/Nanny Side) ─────────────────────────────────
+
+    // Called when Phone 2 wants to stop accessing the shared log.
+    // Clears local state — the owner's share remains active so they can re-invite.
+    func leaveShare() async {
+        isLoading = true
+        defer { isLoading = false }
+        SyncStateManager.shared.isParticipant = false
+        SyncStateManager.shared.isPartnerConnected = false
+        SyncStateManager.shared.hasPartnerShare = false
+        SyncStateManager.shared.deactivatePro()
+        UserDefaults.standard.removeObject(forKey: kShareRecordNameKey)
+        activeShare = nil
     }
 
     // ─── Accept Incoming Share (Partner Side) ─────────────────────────────
@@ -246,6 +289,14 @@ class SharingManager: ObservableObject {
         let op = CKModifyRecordsOperation(recordsToSave: [rootRecord, share])
         op.savePolicy = .ifServerRecordUnchanged
 
+        // Capture the server-returned share so we get the URL Apple assigns after save.
+        var serverShare: CKShare?
+        op.perRecordSaveBlock = { _, result in
+            if case .success(let record) = result, let ckShare = record as? CKShare {
+                serverShare = ckShare
+            }
+        }
+
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             op.modifyRecordsResultBlock = { result in
                 switch result {
@@ -256,9 +307,10 @@ class SharingManager: ObservableObject {
             privateDB.add(op)
         }
 
-        UserDefaults.standard.set(share.recordID.recordName, forKey: kShareRecordNameKey)
+        let finalShare = serverShare ?? share
+        UserDefaults.standard.set(finalShare.recordID.recordName, forKey: kShareRecordNameKey)
         SyncStateManager.shared.hasPartnerShare = true
-        return share
+        return finalShare
     }
 }
 

@@ -29,8 +29,9 @@ struct PartnerSyncView: View {
 
     // 📖 SWIFT CONCEPT: @State
     // Local, temporary UI state. Not saved to disk. Only this view owns it.
-    @State private var showDisconnectConfirm = false
-    @State private var showInviteSheet       = false
+    @State private var showDisconnectConfirm   = false
+    @State private var showInviteSheet         = false
+    @State private var shareURLForPresentation: URL? = nil
 
     var body: some View {
         List {
@@ -63,8 +64,10 @@ struct PartnerSyncView: View {
             }
 
             // ── Partner Status ────────────────────────────────────────────
-            Section(header: Text("Partner Access")) {
-                if sync.isPartnerConnected {
+            Section(header: Text(sync.isParticipant ? "Shared Log" : "Partner Access")) {
+                if sync.isParticipant {
+                    participantStatusRow
+                } else if sync.isPartnerConnected {
                     connectedRow
                 } else if sharing.activeShare != nil {
                     pendingRow
@@ -73,13 +76,23 @@ struct PartnerSyncView: View {
                 }
             }
 
-            // ── How It Works ─────────────────────────────────────────────
-            Section(header: Text("How It Works")) {
-                howItWorksContent
+            // ── How It Works (owners only) ────────────────────────────────
+            if !sync.isParticipant {
+                Section(header: Text("How It Works")) {
+                    howItWorksContent
+                }
             }
 
-            // ── Danger Zone ───────────────────────────────────────────────
-            if sync.isPartnerConnected {
+            // ── Leave / Disconnect ────────────────────────────────────────
+            if sync.isParticipant {
+                Section {
+                    Button(role: .destructive) {
+                        showDisconnectConfirm = true
+                    } label: {
+                        Label("Leave Shared Log", systemImage: "person.badge.minus")
+                    }
+                }
+            } else if sync.isPartnerConnected {
                 Section {
                     Button(role: .destructive) {
                         showDisconnectConfirm = true
@@ -94,22 +107,39 @@ struct PartnerSyncView: View {
         .navigationTitle("Partner Sync")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            // Load the share status each time this screen appears.
-            await sharing.loadExistingShare()
+            // Participants don't own a share — skip loadExistingShare to avoid errors.
+            if !sync.isParticipant {
+                await sharing.loadExistingShare()
+            }
             await CloudKitManager.shared.fetchChanges()
         }
-        // 📖 SWIFT CONCEPT: .alert with isPresented binding
-        // When showDisconnectConfirm becomes true, SwiftUI shows this alert.
-        // The binding auto-resets it to false when the alert is dismissed.
-        .confirmationDialog("Disconnect Partner?",
-                            isPresented: $showDisconnectConfirm,
-                            titleVisibility: .visible) {
-            Button("Disconnect", role: .destructive) {
-                Task { await sharing.revokeShare() }
+        .sheet(isPresented: Binding(
+            get: { shareURLForPresentation != nil },
+            set: { if !$0 { shareURLForPresentation = nil } }
+        )) {
+            if let url = shareURLForPresentation {
+                ActivityShareSheet(url: url)
+            }
+        }
+        .confirmationDialog(
+            sync.isParticipant ? "Leave Shared Log?" : "Disconnect Partner?",
+            isPresented: $showDisconnectConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(sync.isParticipant ? "Leave" : "Disconnect", role: .destructive) {
+                Task {
+                    if sync.isParticipant {
+                        await sharing.leaveShare()
+                    } else {
+                        await sharing.revokeShare()
+                    }
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Your partner will immediately lose access to the shared logs.")
+            Text(sync.isParticipant
+                 ? "You will lose access to the shared baby log."
+                 : "Your partner will immediately lose access to the shared logs.")
         }
     }
 
@@ -179,9 +209,10 @@ struct PartnerSyncView: View {
             }
 
             Button {
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let rootVC = windowScene.windows.first?.rootViewController {
-                    Task { await sharing.presentShareSheet(from: rootVC) }
+                Task {
+                    if let share = await sharing.prepareShare(), let url = share.url {
+                        shareURLForPresentation = url
+                    }
                 }
             } label: {
                 Label("Resend Invite", systemImage: "arrow.clockwise")
@@ -200,10 +231,10 @@ struct PartnerSyncView: View {
         // UICloudSharingController. The actual UIKit call is inside
         // SharingManager.presentShareSheet(from:).
         Button {
-            // Find the root UIViewController to present the share sheet from.
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let rootVC = windowScene.windows.first?.rootViewController {
-                Task { await sharing.presentShareSheet(from: rootVC) }
+            Task {
+                if let share = await sharing.prepareShare(), let url = share.url {
+                    shareURLForPresentation = url
+                }
             }
         } label: {
             HStack {
@@ -220,6 +251,31 @@ struct PartnerSyncView: View {
             }
         }
         .disabled(sharing.isLoading)
+    }
+
+    // Shown on Phone 2 (the partner / nanny who accepted the invite).
+    private var participantStatusRow: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.primaryAction.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(AppTheme.Colors.primaryAction)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Connected to Shared Log")
+                    .font(AppTheme.Typography.bodyLarge)
+                    .fontWeight(.medium)
+                    .foregroundColor(AppTheme.Colors.primaryText)
+                Text("You're viewing and syncing the shared baby log")
+                    .font(AppTheme.Typography.labelSmall)
+                    .foregroundColor(AppTheme.Colors.secondaryText)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 6)
     }
 
     private var connectedRow: some View {
@@ -276,8 +332,8 @@ struct PartnerSyncView: View {
 
             Divider()
 
-            Label("Partner has read-only access — they can view but not delete your entries",
-                  systemImage: "lock.fill")
+            Label("Both partners can view and log entries — changes sync both ways",
+                  systemImage: "lock.shield.fill")
                 .font(AppTheme.Typography.labelSmall)
                 .foregroundColor(AppTheme.Colors.secondaryText)
         }
@@ -318,8 +374,22 @@ private extension Date {
     }
 }
 
+// ─── ActivityShareSheet ────────────────────────────────────────────────────────
+// Presents the standard iOS share sheet (iMessage, AirDrop, Copy Link, etc.)
+// with the CloudKit share URL. The recipient's iOS recognises the cloudkit.com
+// URL and triggers the "Accept" flow automatically when they tap it.
+struct ActivityShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 #Preview {
-    NavigationView {
+    NavigationStack {
         PartnerSyncView()
             .environmentObject(DataStore())
     }

@@ -133,8 +133,16 @@ class CloudKitManager: ObservableObject {
     // It wires everything together so sync "just works" from then on.
     func configure(with dataStore: DataStore) {
         self.dataStore = dataStore
-        guard SyncStateManager.shared.isPro else { return }
         Task {
+            // Participant recovery: if the user reinstalled the app, AppStorage is wiped,
+            // but the shared zone still exists in iCloud. Check for it and restore state.
+            if !SyncStateManager.shared.isPro && !SyncStateManager.shared.isParticipant {
+                if let sharedZones = try? await sharedDB.allRecordZones(), !sharedZones.isEmpty {
+                    SyncStateManager.shared.isParticipant = true
+                    SyncStateManager.shared.activatePro()
+                }
+            }
+            guard SyncStateManager.shared.isPro else { return }
             await boot()
         }
     }
