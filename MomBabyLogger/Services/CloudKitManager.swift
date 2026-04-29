@@ -156,6 +156,16 @@ class CloudKitManager: ObservableObject {
         }
     }
 
+    // Called after Phone 2 accepts a share while the app is already running.
+    // When the app was already open, boot() ran earlier with isParticipant=false,
+    // so it set up owner subscriptions instead of participant ones.
+    // Re-running boot() here switches to the correct participant path:
+    // sets up the shared DB subscription and starts the Combine observer.
+    func startSyncAfterJoining() {
+        guard dataStore != nil else { return }
+        Task { await boot() }
+    }
+
     // Internal boot: create the iCloud zone, subscribe to push notifications,
     // wire the Combine observer, then do an initial fetch.
     private func boot() async {
@@ -168,6 +178,9 @@ class CloudKitManager: ObservableObject {
             } else {
                 try await setupZoneIfNeeded()
                 try await setupSubscriptionIfNeeded()
+                // Eagerly upload any local entries not yet in iCloud.
+                // Catches entries logged before Pro was activated or before the share was created.
+                if let ds = dataStore { await syncNewEntries(ds.entries) }
             }
             observeDataStore()
             await fetchChanges()
@@ -594,5 +607,15 @@ class CloudKitManager: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: key)
         }
+    }
+
+    // Wipes all shared zone change tokens so the next fetchSharedChanges()
+    // returns every record from scratch instead of only incremental deltas.
+    // Call this when Phone 2 first accepts the share.
+    func clearSharedZoneTokens() {
+        let prefix = "mommyslog.sharedToken."
+        UserDefaults.standard.dictionaryRepresentation().keys
+            .filter { $0.hasPrefix(prefix) }
+            .forEach { UserDefaults.standard.removeObject(forKey: $0) }
     }
 }

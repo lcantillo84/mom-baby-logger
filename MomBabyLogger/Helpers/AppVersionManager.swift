@@ -78,15 +78,18 @@ class AppVersionManager {
                 ]
             ),
 
+            "1.5.0": WhatsNewContent(
+                version: "1.5.0",
+                title: "Partner Sync & Insights",
+                features: [
+                    WhatsNewFeature(icon: "person.2.fill",        title: "Partner Sync",     description: "Share live logs with your partner or nanny via iCloud"),
+                    WhatsNewFeature(icon: "chart.bar.fill",       title: "7-Day Insights",   description: "See feeding and diaper charts for the last 7 days"),
+                    WhatsNewFeature(icon: "clock.fill",           title: "Quick Stats",       description: "Time since last feeding, daily average, and total oz at a glance"),
+                    WhatsNewFeature(icon: "icloud.fill",          title: "iCloud Backup",    description: "Your data is safe even if you switch phones")
+                ]
+            ),
+
             // FUTURE UPDATES: Add new versions here
-            // Example for next update:
-            // "1.2.0": WhatsNewContent(
-            //     version: "1.2.0",
-            //     title: "New Features Coming Soon!",
-            //     features: [
-            //         WhatsNewFeature(icon: "chart.bar.fill", title: "Statistics", description: "View feeding and diaper patterns"),
-            //     ]
-            // ),
         ]
 
         return whatsNewData[version]

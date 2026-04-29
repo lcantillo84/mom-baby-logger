@@ -83,7 +83,7 @@ struct PartnerSyncView: View {
                 }
             }
 
-            // ── Leave / Disconnect ────────────────────────────────────────
+            // ── Leave / Disconnect / Cancel ───────────────────────────────
             if sync.isParticipant {
                 Section {
                     Button(role: .destructive) {
@@ -98,6 +98,14 @@ struct PartnerSyncView: View {
                         showDisconnectConfirm = true
                     } label: {
                         Label("Disconnect Partner", systemImage: "person.badge.minus")
+                    }
+                }
+            } else if sharing.activeShare != nil {
+                Section {
+                    Button(role: .destructive) {
+                        showDisconnectConfirm = true
+                    } label: {
+                        Label("Cancel Invite", systemImage: "xmark.circle")
                     }
                 }
             }
@@ -122,11 +130,11 @@ struct PartnerSyncView: View {
             }
         }
         .confirmationDialog(
-            sync.isParticipant ? "Leave Shared Log?" : "Disconnect Partner?",
+            sync.isParticipant ? "Leave Shared Log?" : sync.isPartnerConnected ? "Disconnect Partner?" : "Cancel Invite?",
             isPresented: $showDisconnectConfirm,
             titleVisibility: .visible
         ) {
-            Button(sync.isParticipant ? "Leave" : "Disconnect", role: .destructive) {
+            Button(sync.isParticipant ? "Leave" : sync.isPartnerConnected ? "Disconnect" : "Cancel Invite", role: .destructive) {
                 Task {
                     if sync.isParticipant {
                         await sharing.leaveShare()
@@ -139,7 +147,9 @@ struct PartnerSyncView: View {
         } message: {
             Text(sync.isParticipant
                  ? "You will lose access to the shared baby log."
-                 : "Your partner will immediately lose access to the shared logs.")
+                 : sync.isPartnerConnected
+                    ? "Your partner will immediately lose access to the shared logs."
+                    : "The invite link will stop working. You can send a new invite anytime.")
         }
     }
 
@@ -255,25 +265,36 @@ struct PartnerSyncView: View {
 
     // Shown on Phone 2 (the partner / nanny who accepted the invite).
     private var participantStatusRow: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Colors.primaryAction.opacity(0.12))
-                    .frame(width: 44, height: 44)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 20))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.Colors.primaryAction.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(AppTheme.Colors.primaryAction)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Connected to Shared Log")
+                        .font(AppTheme.Typography.bodyLarge)
+                        .fontWeight(.medium)
+                        .foregroundColor(AppTheme.Colors.primaryText)
+                    Text("You're viewing and syncing the shared baby log")
+                        .font(AppTheme.Typography.labelSmall)
+                        .foregroundColor(AppTheme.Colors.secondaryText)
+                }
+                Spacer()
+            }
+
+            Button {
+                Task { await CloudKitManager.shared.fetchChanges() }
+            } label: {
+                Label("Refresh Logs", systemImage: "arrow.clockwise")
+                    .font(AppTheme.Typography.bodyMedium)
                     .foregroundColor(AppTheme.Colors.primaryAction)
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Connected to Shared Log")
-                    .font(AppTheme.Typography.bodyLarge)
-                    .fontWeight(.medium)
-                    .foregroundColor(AppTheme.Colors.primaryText)
-                Text("You're viewing and syncing the shared baby log")
-                    .font(AppTheme.Typography.labelSmall)
-                    .foregroundColor(AppTheme.Colors.secondaryText)
-            }
-            Spacer()
+            .disabled(sync.syncStatus == .syncing)
         }
         .padding(.vertical, 6)
     }

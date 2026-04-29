@@ -67,6 +67,15 @@ class SharingManager: ObservableObject {
         do {
             let record = try await privateDB.record(for: recordID)
             activeShare = record as? CKShare
+            // Update Phone 1's connection status by checking actual participant acceptance.
+            // Without this, Phone 1 would stay stuck on "Waiting for partner to accept"
+            // even after the partner taps the link and joins.
+            if let share = activeShare {
+                let hasAccepted = share.participants.contains {
+                    $0.role != .owner && $0.acceptanceStatus == .accepted
+                }
+                SyncStateManager.shared.isPartnerConnected = hasAccepted
+            }
         } catch {
             // Share was deleted from iCloud (e.g. partner revoked it or iCloud cleanup).
             activeShare = nil
@@ -228,7 +237,14 @@ class SharingManager: ObservableObject {
             SyncStateManager.shared.isParticipant = true   // this device accepted, not created
             SyncStateManager.shared.activatePro()          // participants get sync for free
 
-            // Pull all existing entries now that access is granted.
+            // If the app was already running, boot() ran earlier with isParticipant=false
+            // and set up owner-mode subscriptions. Re-run boot() now so Phone 2 gets
+            // the shared DB subscription and Combine observer wired correctly.
+            CloudKitManager.shared.startSyncAfterJoining()
+
+            // Reset shared zone tokens so the first fetch returns ALL of Phone 1's records,
+            // not just incremental changes since a (possibly stale) previous token.
+            CloudKitManager.shared.clearSharedZoneTokens()
             await CloudKitManager.shared.fetchChanges()
 
         } catch {
