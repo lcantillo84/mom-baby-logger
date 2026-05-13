@@ -30,7 +30,6 @@ struct PartnerSyncView: View {
     // 📖 SWIFT CONCEPT: @State
     // Local, temporary UI state. Not saved to disk. Only this view owns it.
     @State private var showDisconnectConfirm   = false
-    @State private var showInviteSheet         = false
     @State private var shareURLForPresentation: URL? = nil
 
     var body: some View {
@@ -219,11 +218,7 @@ struct PartnerSyncView: View {
             }
 
             Button {
-                Task {
-                    if let share = await sharing.prepareShare(), let url = share.url {
-                        shareURLForPresentation = url
-                    }
-                }
+                Task { shareURLForPresentation = await sharing.getShareURL() }
             } label: {
                 Label("Resend Invite", systemImage: "arrow.clockwise")
                     .font(AppTheme.Typography.bodyMedium)
@@ -235,17 +230,8 @@ struct PartnerSyncView: View {
     }
 
     private var inviteRow: some View {
-        // 📖 SWIFT CONCEPT: UIViewControllerRepresentable (via sheet)
-        // We can't call UIKit's present() from SwiftUI directly.
-        // Instead we use a .sheet that shows a SwiftUI wrapper around the
-        // UICloudSharingController. The actual UIKit call is inside
-        // SharingManager.presentShareSheet(from:).
         Button {
-            Task {
-                if let share = await sharing.prepareShare(), let url = share.url {
-                    shareURLForPresentation = url
-                }
-            }
+            Task { shareURLForPresentation = await sharing.getShareURL() }
         } label: {
             HStack {
                 Label("Invite Partner or Nanny", systemImage: "person.badge.plus")
@@ -395,17 +381,14 @@ private extension Date {
     }
 }
 
-// ─── ActivityShareSheet ────────────────────────────────────────────────────────
-// Presents the standard iOS share sheet (iMessage, AirDrop, Copy Link, etc.)
-// with the CloudKit share URL. The recipient's iOS recognises the cloudkit.com
-// URL and triggers the "Accept" flow automatically when they tap it.
+// Wraps UIActivityViewController so SwiftUI can present it via .sheet().
+// iOS recognises the cloudkit.com URL and routes it to the app's share-acceptance
+// handler when the recipient taps the link.
 struct ActivityShareSheet: UIViewControllerRepresentable {
     let url: URL
-
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: [url], applicationActivities: nil)
     }
-
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 

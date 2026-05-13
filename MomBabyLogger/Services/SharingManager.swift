@@ -47,6 +47,11 @@ class SharingManager: ObservableObject {
     // UserDefaults key to remember the share's record name between launches.
     private let kShareRecordNameKey = "mommyslog.shareRecordName"
 
+    // Share architecture version. v1 = hierarchy-based (broken — entries not exposed to
+    // participants). v2 = zone-based (correct — all records in the zone are shared).
+    private let kShareVersionKey     = "mommyslog.shareVersion"
+    private let kCurrentShareVersion = 2
+
     private init() {}
 
     // ─── Load Existing Share ───────────────────────────────────────────────
@@ -56,7 +61,16 @@ class SharingManager: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        // If we saved a record name before, try to fetch that exact share.
+        // If on an old share version, treat as no share. Loading the broken hierarchy-based
+        // share would show "Invite Sent / Waiting" for an invite that could never work.
+        // The next time the user taps Invite, fetchOrCreateShare() migrates to zone-based.
+        let storedVersion = UserDefaults.standard.integer(forKey: kShareVersionKey)
+        guard storedVersion >= kCurrentShareVersion else {
+            activeShare = nil
+            SyncStateManager.shared.isPartnerConnected = false
+            return
+        }
+
         guard let savedName = UserDefaults.standard.string(forKey: kShareRecordNameKey) else {
             activeShare = nil
             return
@@ -175,6 +189,67 @@ class SharingManager: ObservableObject {
         }
     }
 
+    // ─── Get Share URL ────────────────────────────────────────────────────
+
+    // Returns the invite URL for display in a SwiftUI sheet.
+    // CloudKit assigns the URL server-side. fetchOrCreateShare() tries to capture
+    // it from perRecordSaveBlock; if that fails (known CloudKit quirk on some iOS
+    // builds) we fetch the saved share back explicitly with full error logging.
+    func getShareURL() async -> URL? {
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+
+        print("[SharingManager] getShareURL: starting")
+        do {
+            let status = try await container.accountStatus()
+            guard status == .available else {
+                errorMessage = iCloudAccountMessage(for: status)
+                return nil
+            }
+
+            let share = try await fetchOrCreateShare()
+            activeShare = share
+
+            if let url = share.url {
+                print("[SharingManager] getShareURL: URL from fetchOrCreateShare → \(url)")
+                return url
+            }
+
+            // URL still nil — fetch the share back from the server.
+            // CloudKit sometimes doesn't include the URL in the initial save
+            // response for zone-based shares; a separate fetch reliably returns it.
+            print("[SharingManager] getShareURL: URL nil after fetchOrCreateShare — retrying fetch. recordID=\(share.recordID.recordName)")
+            do {
+                let fetched = try await privateDB.record(for: share.recordID)
+                print("[SharingManager] getShareURL: fetched type=\(fetched.recordType) isShare=\(fetched is CKShare)")
+                if let fetchedShare = fetched as? CKShare {
+                    print("[SharingManager] getShareURL: fetchedShare.url=\(String(describing: fetchedShare.url))")
+                    activeShare = fetchedShare
+                    if let url = fetchedShare.url { return url }
+                    print("[SharingManager] getShareURL: fetchedShare.url still nil after retry fetch")
+                } else {
+                    print("[SharingManager] getShareURL: retry-fetch cast to CKShare FAILED")
+                }
+            } catch {
+                print("[SharingManager] getShareURL: retry-fetch error: \(error)")
+            }
+
+            errorMessage = "Could not generate invite link. Check your iCloud connection and try again."
+            return nil
+
+        } catch let ckError as CKError where ckError.code == .notAuthenticated {
+            errorMessage = "Partner Sync requires iCloud. Go to Settings → [your name] → iCloud and make sure iCloud Drive is turned on for this app."
+            return nil
+        } catch let ckError as CKError {
+            errorMessage = "iCloud error (\(ckError.code.rawValue)): \(ckError.localizedDescription)"
+            return nil
+        } catch {
+            errorMessage = "Could not create invite: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
     // ─── Revoke / Disconnect Partner ──────────────────────────────────────
 
     func revokeShare() async {
@@ -237,15 +312,12 @@ class SharingManager: ObservableObject {
             SyncStateManager.shared.isParticipant = true   // this device accepted, not created
             SyncStateManager.shared.activatePro()          // participants get sync for free
 
-            // If the app was already running, boot() ran earlier with isParticipant=false
-            // and set up owner-mode subscriptions. Re-run boot() now so Phone 2 gets
-            // the shared DB subscription and Combine observer wired correctly.
-            CloudKitManager.shared.startSyncAfterJoining()
-
-            // Reset shared zone tokens so the first fetch returns ALL of Phone 1's records,
-            // not just incremental changes since a (possibly stale) previous token.
+            // Clear stale tokens BEFORE starting sync so boot()'s fetchChanges
+            // returns ALL of Phone 1's records, not just incremental deltas.
             CloudKitManager.shared.clearSharedZoneTokens()
-            await CloudKitManager.shared.fetchChanges()
+            // startSyncAfterJoining re-runs boot() which sets up the shared DB
+            // subscription, wires Combine, and calls fetchChanges() internally.
+            CloudKitManager.shared.startSyncAfterJoining()
 
         } catch {
             errorMessage = "Could not accept share: \(error.localizedDescription)"
@@ -270,12 +342,49 @@ class SharingManager: ObservableObject {
         }
     }
 
+    // Deletes and recreates MommysLogZone so CloudKit assigns the zoneWideSharing capability.
+    // All CloudKit records in the zone are removed, but entries are persisted in DataStore
+    // (UserDefaults-backed) and will re-upload automatically on the next sync cycle.
+    private func migrateZoneForZoneWideSharing() async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            let op = CKModifyRecordZonesOperation(recordZonesToSave: nil,
+                                                  recordZoneIDsToDelete: [zone.zoneID])
+            op.modifyRecordZonesResultBlock = { result in
+                switch result {
+                case .success: cont.resume()
+                case .failure(let e): cont.resume(throwing: e)
+                }
+            }
+            privateDB.add(op)
+        }
+        print("[SharingManager] migrateZoneForZoneWideSharing: zone deleted")
+
+        // Clear CloudKitManager's state keys so it treats this as a fresh start:
+        // – zoneCreated: forces setupZoneIfNeeded() to save the new zone
+        // – uploadedEntryIDs: forces syncNewEntries() to re-upload all local entries
+        // – serverChangeToken: forces fetchChanges() to pull the full record set
+        UserDefaults.standard.removeObject(forKey: "mommyslog.zoneCreated")
+        UserDefaults.standard.removeObject(forKey: "mommyslog.uploadedEntryIDs")
+        UserDefaults.standard.removeObject(forKey: "mommyslog.serverChangeToken")
+
+        // Recreate the zone — on iOS 15+ this yields a zone with zoneWideSharing.
+        try await ensureZoneExists()
+        print("[SharingManager] migrateZoneForZoneWideSharing: zone recreated with zoneWideSharing")
+
+        // Kick CloudKitManager to re-upload all local entries to the fresh zone.
+        CloudKitManager.shared.startSyncAfterJoining()
+    }
+
     private func fetchOrCreateShare() async throws -> CKShare {
-        // Reuse existing share if we have one — but ensure permission is correct.
-        // publicPermission must be .readWrite so anyone with the URL can accept.
-        // Old shares may have been saved with the default .none, which causes
-        // "Item Unavailable" when the recipient taps the link.
-        if let existing = activeShare {
+        let storedVersion = UserDefaults.standard.integer(forKey: kShareVersionKey)
+
+        print("[SharingManager] fetchOrCreateShare: storedVersion=\(storedVersion) currentVersion=\(kCurrentShareVersion) activeShare.url=\(String(describing: activeShare?.url))")
+
+        // Fast path: current-version share already loaded into memory WITH a URL.
+        // If URL is nil the share was saved but the URL wasn't captured — don't
+        // short-circuit; fall through to re-fetch from CloudKit.
+        if storedVersion >= kCurrentShareVersion, let existing = activeShare, existing.url != nil {
+            print("[SharingManager] fetchOrCreateShare: in-memory fast path, URL=\(existing.url!)")
             if existing.publicPermission != .readWrite {
                 existing.publicPermission = .readWrite
                 try? await saveUpdatedShare(existing)
@@ -283,64 +392,164 @@ class SharingManager: ObservableObject {
             return existing
         }
 
-        // Zone must exist before we can save any records (including a CKShare).
-        // CloudKit returns notAuthenticated — confusingly — when the zone is missing.
-        try await ensureZoneExists()
-
-        // CKShare needs to be associated with a "root record."
-        // We use a dedicated metadata record (not an entry) as the share root.
-        let rootRecordID = CKRecord.ID(recordName: "shareRoot", zoneID: zone.zoneID)
-
-        do {
-            // Try fetching an existing root record + its share.
-            let rootRecord = try await privateDB.record(for: rootRecordID)
-            // If the root record exists, try to find its associated share.
-            if let shareRef = rootRecord.share,
-               let shareRecord = try? await privateDB.record(for: shareRef.recordID),
-               let share = shareRecord as? CKShare {
-                // Fix permission on any existing share that was saved with .none.
-                if share.publicPermission != .readWrite {
-                    share.publicPermission = .readWrite
-                    try? await saveUpdatedShare(share)
+        // Current version — fetch the saved share from CloudKit by its stored record name.
+        // Uses a full do/catch so cast failures and network errors are both logged.
+        if storedVersion >= kCurrentShareVersion,
+           let savedName = UserDefaults.standard.string(forKey: kShareRecordNameKey) {
+            print("[SharingManager] fetchOrCreateShare: fetching saved share '\(savedName)' from CloudKit")
+            do {
+                let record = try await privateDB.record(
+                    for: CKRecord.ID(recordName: savedName, zoneID: zone.zoneID))
+                print("[SharingManager] fetchOrCreateShare: fetched type=\(record.recordType) isShare=\(record is CKShare)")
+                if let share = record as? CKShare {
+                    print("[SharingManager] fetchOrCreateShare: saved share URL=\(String(describing: share.url))")
+                    activeShare = share
+                    if share.publicPermission != .readWrite {
+                        share.publicPermission = .readWrite
+                        try? await saveUpdatedShare(share)
+                    }
+                    return share
+                } else {
+                    print("[SharingManager] fetchOrCreateShare: cast to CKShare FAILED — will recreate")
                 }
-                UserDefaults.standard.set(share.recordID.recordName, forKey: kShareRecordNameKey)
-                return share
-            }
-        } catch { /* root record doesn't exist yet — create it below */ }
-
-        // First time: create the root record and its CKShare together.
-        let rootRecord = CKRecord(recordType: "ShareRoot", recordID: rootRecordID)
-        rootRecord["app"] = "MommysLog" as CKRecordValue
-
-        let share = CKShare(rootRecord: rootRecord)
-        share[CKShare.SystemFieldKey.title] = "Mommy's Log" as CKRecordValue
-        // Allow anyone with the link to accept the share (required for UIActivityViewController flow).
-        share.publicPermission = .readWrite
-
-        // Save both the root record and the share in one atomic operation.
-        let op = CKModifyRecordsOperation(recordsToSave: [rootRecord, share])
-        op.savePolicy = .ifServerRecordUnchanged
-
-        // Capture the server-returned share so we get the URL Apple assigns after save.
-        var serverShare: CKShare?
-        op.perRecordSaveBlock = { _, result in
-            if case .success(let record) = result, let ckShare = record as? CKShare {
-                serverShare = ckShare
+            } catch {
+                print("[SharingManager] fetchOrCreateShare: failed to fetch saved share: \(error) — will recreate")
             }
         }
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        // ── Migration / first invite ───────────────────────────────────────────
+        // Delete any existing old share. The old code used CKShare(rootRecord:) which is a
+        // *hierarchy-based* share — it only exposes the ShareRoot record and its explicit
+        // children, NOT the Entry records saved by CloudKitManager. That is why Phone 2
+        // could accept the invite and see the zone, but found zero entries.
+        // CKShare(recordZoneID:) shares ALL records in the zone — the correct type.
+
+        if let existing = activeShare {
+            _ = try? await privateDB.deleteRecord(withID: existing.recordID)
+            activeShare = nil
+        } else if let savedName = UserDefaults.standard.string(forKey: kShareRecordNameKey) {
+            _ = try? await privateDB.deleteRecord(
+                withID: CKRecord.ID(recordName: savedName, zoneID: zone.zoneID))
+        }
+        // Remove the old ShareRoot metadata record that hierarchy-based sharing required.
+        _ = try? await privateDB.deleteRecord(
+            withID: CKRecord.ID(recordName: "shareRoot", zoneID: zone.zoneID))
+        UserDefaults.standard.removeObject(forKey: kShareRecordNameKey)
+
+        // Zone must exist before we can save the share.
+        try await ensureZoneExists()
+
+        // CKShare(recordZoneID:) requires the zone to have the .zoneWideSharing capability.
+        // Zones created without this capability return CKError 12/2006 "share type
+        // inconsistent with zone capabilities" — the save fails silently per-record while
+        // modifyRecordsResultBlock still reports success, leaving share.url permanently nil.
+        // Fix: delete and recreate the zone. Entries are safe in DataStore (UserDefaults)
+        // and will re-upload automatically via CloudKitManager on the next sync.
+        let allZones = try await privateDB.allRecordZones()
+        if let existingZone = allZones.first(where: { $0.zoneID.zoneName == kZoneName }) {
+            let hasSharing = existingZone.capabilities.contains(.zoneWideSharing)
+            print("[SharingManager] Zone capabilities rawValue=\(existingZone.capabilities.rawValue) zoneWideSharing=\(hasSharing)")
+            if !hasSharing {
+                print("[SharingManager] Zone lacks zoneWideSharing — deleting and recreating zone")
+                try await migrateZoneForZoneWideSharing()
+            }
+        }
+
+        // Zone-based share: every record in MommysLogZone — past and future — is
+        // automatically visible to (and writable by) participants.
+        let share = CKShare(recordZoneID: zone.zoneID)
+        share[CKShare.SystemFieldKey.title] = "Mommy's Log" as CKRecordValue
+        share.publicPermission = .readWrite   // anyone with the link can accept
+
+        print("[SharingManager] fetchOrCreateShare: saving new CKShare(recordZoneID:). localRecordID=\(share.recordID.recordName)")
+
+        var serverShare: CKShare?
+        // Track the server-assigned recordID separately from the CKShare cast.
+        // If `record as? CKShare` fails (a CloudKit quirk on some iOS builds that returns
+        // CKRecord instead of CKShare from perRecordSaveBlock), we still have the correct
+        // server-side recordID to use for the fetch-back.
+        var serverRecordID: CKRecord.ID?
+        // CKShare saves can fail per-record while modifyRecordsResultBlock reports success.
+        // Capture the error here so we can throw after the operation completes.
+        var shareOperationError: Error?
+
+        let op = CKModifyRecordsOperation(recordsToSave: [share])
+        op.savePolicy = .ifServerRecordUnchanged
+        op.perRecordSaveBlock = { recordID, result in
+            print("[SharingManager] perRecordSaveBlock fired: recordName=\(recordID.recordName)")
+            switch result {
+            case .success(let record):
+                serverRecordID = record.recordID
+                print("[SharingManager]   recordType=\(record.recordType) isShare=\(record is CKShare)")
+                if let ck = record as? CKShare {
+                    print("[SharingManager]   cast to CKShare succeeded. URL=\(String(describing: ck.url))")
+                    serverShare = ck
+                } else {
+                    print("[SharingManager]   cast to CKShare FAILED — will fetch back using serverRecordID=\(record.recordID.recordName)")
+                }
+            case .failure(let e):
+                print("[SharingManager]   perRecordSaveBlock error: \(e)")
+                shareOperationError = e
+            }
+        }
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             op.modifyRecordsResultBlock = { result in
+                print("[SharingManager] modifyRecordsResultBlock fired")
                 switch result {
-                case .success: continuation.resume()
-                case .failure(let error): continuation.resume(throwing: error)
+                case .success:            cont.resume()
+                case .failure(let error): cont.resume(throwing: error)
                 }
             }
             privateDB.add(op)
         }
 
+        // Surface the per-record error (e.g., a zone-capabilities issue that migration missed).
+        if let err = shareOperationError {
+            print("[SharingManager] Share save failed per-record — throwing: \(err)")
+            throw err
+        }
+
+        print("[SharingManager] After save: serverShare.url=\(String(describing: serverShare?.url)) serverRecordID=\(String(describing: serverRecordID?.recordName))")
+
+        // Happy path: perRecordSaveBlock gave us a CKShare with a URL.
+        if let ck = serverShare, ck.url != nil {
+            print("[SharingManager] Using serverShare from perRecordSaveBlock. URL=\(ck.url!)")
+            UserDefaults.standard.set(ck.recordID.recordName, forKey: kShareRecordNameKey)
+            UserDefaults.standard.set(kCurrentShareVersion, forKey: kShareVersionKey)
+            SyncStateManager.shared.hasPartnerShare = true
+            return ck
+        }
+
+        // URL not in the save response — fetch the share back from CloudKit.
+        // Use the server-assigned recordID when available (the cast may have failed,
+        // but the recordID is still valid for a direct fetch).
+        let fetchID = serverRecordID ?? serverShare?.recordID ?? share.recordID
+        print("[SharingManager] URL missing in save response — fetching back. fetchID=\(fetchID.recordName)")
+        do {
+            let fetched = try await privateDB.record(for: fetchID)
+            print("[SharingManager] Fetch-back: recordType=\(fetched.recordType) isShare=\(fetched is CKShare)")
+            if let fetchedShare = fetched as? CKShare {
+                print("[SharingManager] Fetch-back URL=\(String(describing: fetchedShare.url))")
+                let idToSave = fetchedShare.recordID.recordName
+                UserDefaults.standard.set(idToSave, forKey: kShareRecordNameKey)
+                UserDefaults.standard.set(kCurrentShareVersion, forKey: kShareVersionKey)
+                SyncStateManager.shared.hasPartnerShare = true
+                return fetchedShare
+            } else {
+                print("[SharingManager] Fetch-back cast to CKShare FAILED")
+            }
+        } catch {
+            print("[SharingManager] Fetch-back error: \(error)")
+        }
+
+        // Last resort: the share IS saved on the server (operation succeeded), but we
+        // couldn't capture the URL. Return what we have — getShareURL() will retry.
         let finalShare = serverShare ?? share
-        UserDefaults.standard.set(finalShare.recordID.recordName, forKey: kShareRecordNameKey)
+        let finalName  = serverRecordID?.recordName ?? finalShare.recordID.recordName
+        print("[SharingManager] Last resort: returning share with URL=\(String(describing: finalShare.url))")
+        UserDefaults.standard.set(finalName, forKey: kShareRecordNameKey)
+        UserDefaults.standard.set(kCurrentShareVersion, forKey: kShareVersionKey)
         SyncStateManager.shared.hasPartnerShare = true
         return finalShare
     }
