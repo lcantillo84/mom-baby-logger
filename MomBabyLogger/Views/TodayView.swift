@@ -9,6 +9,7 @@ struct TodayView: View {
     @EnvironmentObject var dataStore: DataStore
     @ObservedObject private var sync = SyncStateManager.shared
     @State private var showingProGate = false
+    @State private var showingPartnerSync = false
 
     private var todayEntries: [EntryWrapper] {
         let calendar = Calendar.current
@@ -62,6 +63,32 @@ struct TodayView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        if sync.isPro || sync.isParticipant {
+                            showingPartnerSync = true
+                        } else {
+                            showingProGate = true
+                        }
+                    } label: {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: sync.isPartnerConnected || sync.isParticipant
+                                  ? "person.2.fill" : "person.2")
+                                .foregroundColor(AppTheme.Colors.primaryAction)
+                            if sync.syncStatus == .syncing {
+                                Circle()
+                                    .fill(sync.syncStatus.color)
+                                    .frame(width: 7, height: 7)
+                                    .offset(x: 3, y: -3)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationDestination(isPresented: $showingPartnerSync) {
+                PartnerSyncView().environmentObject(dataStore)
+            }
         }
         .sheet(isPresented: $showingProGate) {
             ProGateView()

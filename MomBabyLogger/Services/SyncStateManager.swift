@@ -49,6 +49,13 @@ class SyncStateManager: ObservableObject {
     // true on the partner/nanny device — they accepted a share instead of creating one
     @AppStorage("mommyslog.isParticipant") var isParticipant: Bool = false
 
+    // Raw UserDefaults — intentionally NOT @AppStorage so CloudKitManager never resets it.
+    // Set true when CKAcceptSharesOperation succeeds; cleared only when user taps "Leave".
+    var hasAcceptedShare: Bool {
+        get { UserDefaults.standard.bool(forKey: "mommyslog.hasAcceptedShare") }
+        set { UserDefaults.standard.set(newValue, forKey: "mommyslog.hasAcceptedShare") }
+    }
+
     // The possible states sync can be in.
     // 📖 SWIFT CONCEPT: Enum with Associated Values
     // .error(String) carries extra info — the error message.

@@ -15,6 +15,7 @@ enum FeedingType: String, CaseIterable {
 
 struct FeedingView: View {
     @EnvironmentObject var dataStore: DataStore
+    @ObservedObject private var sync = SyncStateManager.shared
     @State private var selectedType: FeedingType = .breast
     @State private var showingBreastTimer = false
     @State private var amount: String = ""
@@ -23,6 +24,8 @@ struct FeedingView: View {
     @State private var confirmationMessage: String = ""
     @State private var isLogging = false
     @FocusState private var focusedField: FocusField?
+    @State private var showingPartnerSync = false
+    @State private var showingProGate = false
 
     @State private var selectedSide: BreastSide = .left
     @State private var manualMinutes: Double = 10
@@ -109,6 +112,14 @@ struct FeedingView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    partnerSyncButton
+                }
+            }
+            .navigationDestination(isPresented: $showingPartnerSync) {
+                PartnerSyncView().environmentObject(dataStore)
+            }
             .keyboardDoneButton(focusedField: $focusedField)
             .sheet(isPresented: $showingBreastTimer) {
                 BreastFeedingTimerView()
@@ -120,6 +131,30 @@ struct FeedingView: View {
             }
             .onAppear {
                 selectedSide = dataStore.lastBreastSide
+            }
+            .sheet(isPresented: $showingProGate) {
+                ProGateView()
+            }
+        }
+    }
+
+    private var partnerSyncButton: some View {
+        Button {
+            if sync.isPro || sync.isParticipant {
+                showingPartnerSync = true
+            } else {
+                showingProGate = true
+            }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: sync.isPartnerConnected || sync.isParticipant ? "person.2.fill" : "person.2")
+                    .foregroundColor(AppTheme.Colors.primaryAction)
+                if sync.syncStatus == .syncing {
+                    Circle()
+                        .fill(sync.syncStatus.color)
+                        .frame(width: 7, height: 7)
+                        .offset(x: 3, y: -3)
+                }
             }
         }
     }

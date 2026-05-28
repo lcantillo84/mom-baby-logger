@@ -9,12 +9,15 @@ import SwiftUI
 
 struct DiaperView: View {
     @EnvironmentObject var dataStore: DataStore
+    @ObservedObject private var sync = SyncStateManager.shared
     @State private var notes: String = ""
     @State private var showingConfirmation = false
     @State private var lastLoggedType: ActivityType?
     @State private var isLogging = false
     @State private var confirmationMessage: String = ""
     @FocusState private var focusedField: FocusField?
+    @State private var showingPartnerSync = false
+    @State private var showingProGate = false
 
     var body: some View {
         NavigationStack {
@@ -77,6 +80,14 @@ struct DiaperView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    partnerSyncButton
+                }
+            }
+            .navigationDestination(isPresented: $showingPartnerSync) {
+                PartnerSyncView().environmentObject(dataStore)
+            }
             .keyboardDoneButton(focusedField: $focusedField)
             .alert("Success!", isPresented: $showingConfirmation) {
                 Button("OK", role: .cancel) { }
@@ -106,6 +117,9 @@ struct DiaperView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showingProGate) {
+            ProGateView()
         }
     }
 
@@ -168,6 +182,27 @@ struct DiaperView: View {
             confirmationMessage = "\(type.displayName) has been successfully recorded"
             showingConfirmation = true
             notes = ""
+        }
+    }
+
+    private var partnerSyncButton: some View {
+        Button {
+            if sync.isPro || sync.isParticipant {
+                showingPartnerSync = true
+            } else {
+                showingProGate = true
+            }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: sync.isPartnerConnected || sync.isParticipant ? "person.2.fill" : "person.2")
+                    .foregroundColor(AppTheme.Colors.primaryAction)
+                if sync.syncStatus == .syncing {
+                    Circle()
+                        .fill(sync.syncStatus.color)
+                        .frame(width: 7, height: 7)
+                        .offset(x: 3, y: -3)
+                }
+            }
         }
     }
 

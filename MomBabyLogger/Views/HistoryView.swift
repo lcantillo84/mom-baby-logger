@@ -9,8 +9,11 @@ import SwiftUI
 
 struct HistoryView: View {
     @EnvironmentObject var dataStore: DataStore
+    @ObservedObject private var sync = SyncStateManager.shared
     @State private var isRefreshing = false
     @State private var entryToEdit: EntryWrapper?
+    @State private var showingPartnerSync = false
+    @State private var showingProGate = false
 
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -60,11 +63,43 @@ struct HistoryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    partnerSyncButton
+                }
+            }
+            .navigationDestination(isPresented: $showingPartnerSync) {
+                PartnerSyncView().environmentObject(dataStore)
+            }
             .background(AppTheme.Colors.appBackground.ignoresSafeArea())
         }
         .sheet(item: $entryToEdit) { entry in
             EditEntryView(entry: entry)
                 .environmentObject(dataStore)
+        }
+        .sheet(isPresented: $showingProGate) {
+            ProGateView()
+        }
+    }
+
+    private var partnerSyncButton: some View {
+        Button {
+            if sync.isPro || sync.isParticipant {
+                showingPartnerSync = true
+            } else {
+                showingProGate = true
+            }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: sync.isPartnerConnected || sync.isParticipant ? "person.2.fill" : "person.2")
+                    .foregroundColor(AppTheme.Colors.primaryAction)
+                if sync.syncStatus == .syncing {
+                    Circle()
+                        .fill(sync.syncStatus.color)
+                        .frame(width: 7, height: 7)
+                        .offset(x: 3, y: -3)
+                }
+            }
         }
     }
 

@@ -10,9 +10,6 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var dataStore: DataStore
 
-    @ObservedObject private var sync = SyncStateManager.shared
-    @State private var showingProGate = false
-
     @State private var showingDeleteConfirmation = false
     @State private var deleteTimeframe: DeleteTimeframe = .all
     @State private var showingExportView = false
@@ -29,42 +26,6 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Partner Sync Section
-                Section(header: Text("Pro Features")) {
-                    if sync.isPro || sync.isParticipant {
-                        NavigationLink(destination: PartnerSyncView().environmentObject(dataStore)) {
-                            HStack {
-                                Image(systemName: sync.isPartnerConnected ? "person.2.fill" : "person.2")
-                                    .foregroundColor(AppTheme.Colors.primaryAction)
-                                Text("Partner Sync")
-                                Spacer()
-                                // Tiny sync status badge next to the row
-                                Image(systemName: sync.syncStatus.iconName)
-                                    .font(.caption)
-                                    .foregroundColor(sync.syncStatus.color)
-                            }
-                        }
-                    } else {
-                        Button {
-                            showingProGate = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "person.2")
-                                    .foregroundColor(AppTheme.Colors.primaryAction)
-                                Text("Partner Sync")
-                                Spacer()
-                                Text("PRO")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
-                                    .background(AppTheme.Colors.primaryAction)
-                                    .clipShape(Capsule())
-                            }
-                        }
-                    }
-                }
-
                 // Reminders Section
                 Section(header: Text("Reminders")) {
                     NavigationLink(destination: ReminderSettingsView()) {
@@ -183,9 +144,6 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingExportView) {
                 ExportView()
-            }
-            .sheet(isPresented: $showingProGate) {
-                ProGateView()
             }
             .alert("Data Deleted", isPresented: $showingDeleteSuccess) {
                 Button("OK", role: .cancel) { }

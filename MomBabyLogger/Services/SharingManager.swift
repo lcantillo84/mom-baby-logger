@@ -40,6 +40,10 @@ class SharingManager: ObservableObject {
         container.privateCloudDatabase
     }()
 
+    private lazy var sharedDB: CKDatabase = {
+        container.sharedCloudDatabase
+    }()
+
     private lazy var zone: CKRecordZone = {
         CKRecordZone(zoneName: kZoneName)
     }()
@@ -282,9 +286,53 @@ class SharingManager: ObservableObject {
         SyncStateManager.shared.isParticipant = false
         SyncStateManager.shared.isPartnerConnected = false
         SyncStateManager.shared.hasPartnerShare = false
+        SyncStateManager.shared.hasAcceptedShare = false
         SyncStateManager.shared.deactivatePro()
         UserDefaults.standard.removeObject(forKey: kShareRecordNameKey)
         activeShare = nil
+    }
+
+    // ─── Join by Pasted URL (fallback for Mac / dev builds) ──────────────────
+
+    // On Mac Catalyst dev builds, the OS doesn't route cloudkit.com share URLs
+    // to the app's delegate — acceptShare(metadata:) never fires. This method
+    // accepts a share directly from its URL by fetching the metadata itself, so
+    // the partner can copy/paste the invite link instead of relying on URL routing.
+    func acceptShareByURL(_ url: URL) async {
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+        print("[SharingManager] acceptShareByURL: fetching metadata for \(url)")
+
+        do {
+            let metadata: CKShare.Metadata = try await withCheckedThrowingContinuation { cont in
+                var captured: CKShare.Metadata?
+                let op = CKFetchShareMetadataOperation(shareURLs: [url])
+                op.perShareMetadataResultBlock = { _, result in
+                    if case .success(let meta) = result { captured = meta }
+                }
+                op.fetchShareMetadataResultBlock = { result in
+                    switch result {
+                    case .success:
+                        if let meta = captured {
+                            cont.resume(returning: meta)
+                        } else {
+                            cont.resume(throwing: NSError(
+                                domain: "SharingManager", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "No share metadata returned for this URL."]))
+                        }
+                    case .failure(let e):
+                        cont.resume(throwing: e)
+                    }
+                }
+                container.add(op)
+            }
+            print("[SharingManager] acceptShareByURL: metadata fetched — calling acceptShare")
+            await acceptShare(metadata: metadata)
+        } catch {
+            print("[SharingManager] acceptShareByURL: error — \(error)")
+            errorMessage = "Could not access share link: \(error.localizedDescription)"
+        }
     }
 
     // ─── Accept Incoming Share (Partner Side) ─────────────────────────────
@@ -292,10 +340,12 @@ class SharingManager: ObservableObject {
     // Called from AppDelegate+CloudKit when the partner taps the link.
     // Accepts the CloudKit share, then fetches all mom's existing entries.
     func acceptShare(metadata: CKShare.Metadata) async {
+        // ⚑ THIS PRINT IS THE FIRST THING THAT RUNS — if you don't see it in the
+        // console, the OS never routed the share URL to the app's delegate.
+        // On Mac: the link must be clicked in Messages or Mail, NOT opened in Safari.
+        print("[SharingManager] acceptShare: called — containerID=\(metadata.containerIdentifier)")
+
         do {
-            // 📖 SWIFT CONCEPT: CKAcceptSharesOperation
-            // This is the handshake — partner's device tells Apple "yes, I accept."
-            // After this, the shared zone appears in partner's sharedCloudDatabase.
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 let op = CKAcceptSharesOperation(shareMetadatas: [metadata])
                 op.acceptSharesResultBlock = { result in
@@ -306,21 +356,92 @@ class SharingManager: ObservableObject {
                 }
                 self.container.add(op)
             }
+            print("[SharingManager] acceptShare: CKAcceptSharesOperation succeeded")
+            SyncStateManager.shared.hasAcceptedShare = true
 
+            // Wait for the shared zone to become visible in sharedDB before setting
+            // participant state. CloudKit can take 1-4 seconds to propagate a newly
+            // accepted zone. Without this wait, fetchSharedChanges() sees zero zones,
+            // mistakes it for a revoked share, and wipes all participant state — making
+            // it look like nothing happened ("only the app opens up").
+            CloudKitManager.shared.clearSharedZoneTokens()
+
+            // Set participant state BEFORE polling. This way the UI updates immediately
+            // so the user sees they are connected even while we wait for zone propagation.
             SyncStateManager.shared.isPartnerConnected = true
             SyncStateManager.shared.hasPartnerShare = true
-            SyncStateManager.shared.isParticipant = true   // this device accepted, not created
-            SyncStateManager.shared.activatePro()          // participants get sync for free
+            SyncStateManager.shared.isParticipant = true
+            SyncStateManager.shared.activatePro()
+            print("[SharingManager] acceptShare: participant state set — polling for zone visibility")
 
-            // Clear stale tokens BEFORE starting sync so boot()'s fetchChanges
-            // returns ALL of Phone 1's records, not just incremental deltas.
-            CloudKitManager.shared.clearSharedZoneTokens()
-            // startSyncAfterJoining re-runs boot() which sets up the shared DB
-            // subscription, wires Combine, and calls fetchChanges() internally.
-            CloudKitManager.shared.startSyncAfterJoining()
+            // Poll for the shared zone to appear in sharedDB. Mac Catalyst zone propagation
+            // can take up to 45 seconds; iPhone is usually 1-4 seconds. We poll here rather
+            // than calling startSyncAfterJoining() immediately because fetchSharedChanges()
+            // inside CloudKitManager sees zero zones and RESETS isParticipant to false,
+            // which would undo the state we just set above.
+            var zoneReady = false
+            for attempt in 1...15 {
+                do {
+                    let zones = try await sharedDB.allRecordZones()
+                    print("[SharingManager] acceptShare: attempt \(attempt) — allRecordZones returned \(zones.count) zone(s): \(zones.map { "\($0.zoneID.zoneName)/\($0.zoneID.ownerName)" })")
+                    if !zones.isEmpty {
+                        zoneReady = true
+                        break
+                    }
+                } catch {
+                    print("[SharingManager] acceptShare: attempt \(attempt) — allRecordZones THREW: \(error)")
+                }
+                try? await Task.sleep(for: .seconds(3))
+            }
+
+            if zoneReady {
+                // Zone is confirmed visible — safe to run sync now. fetchSharedChanges()
+                // will find the zone and pull all shared entries without resetting state.
+                CloudKitManager.shared.startSyncAfterJoining()
+                print("[SharingManager] acceptShare: zone confirmed — sync started")
+            } else {
+                // Zone never appeared (can happen on Mac Catalyst dev builds).
+                // Participant state is already set above. CloudKit will eventually send a
+                // background push that triggers fetchChanges() — or the user can tap
+                // "Refresh Logs" in the Partner Sync view to pull manually.
+                print("[SharingManager] acceptShare: WARNING — zone not visible after 45s. State is set; sync will run on next background push or manual refresh.")
+            }
 
         } catch {
+            print("[SharingManager] acceptShare: error — \(error)")
             errorMessage = "Could not accept share: \(error.localizedDescription)"
+        }
+    }
+
+    // ─── Restore Participant State After CloudKitManager Reset ─────────────
+
+    // CloudKitManager.fetchSharedChanges() resets isParticipant=false when
+    // allRecordZones() returns empty (e.g. zone still propagating on app launch).
+    // This method re-applies participant state using the durable hasAcceptedShare
+    // sentinel that CloudKitManager never touches.
+    func restoreParticipantStateIfNeeded() async {
+        let accepted = SyncStateManager.shared.hasAcceptedShare
+        print("[SharingManager] restoreParticipantStateIfNeeded: hasAcceptedShare=\(accepted) isParticipant=\(SyncStateManager.shared.isParticipant)")
+        guard accepted else { return }
+
+        // Always re-assert Pro + participant access — CloudKitManager may have reset them.
+        SyncStateManager.shared.isParticipant = true
+        SyncStateManager.shared.activatePro()
+
+        let zones = try? await sharedDB.allRecordZones()
+        let zoneCount = zones?.count ?? 0
+        print("[SharingManager] restoreParticipantStateIfNeeded: sharedDB zones=\(zoneCount)")
+
+        if zoneCount > 0 {
+            SyncStateManager.shared.isPartnerConnected = true
+            SyncStateManager.shared.hasPartnerShare = true
+            print("[SharingManager] restoreParticipantStateIfNeeded: zones visible — full state restored, triggering sync")
+            CloudKitManager.shared.startSyncAfterJoining()
+        } else {
+            // Zones not yet propagated — state is already set above.
+            // Do NOT call startSyncAfterJoining(): fetchSharedChanges() sees
+            // empty zones and calls deactivatePro(), undoing everything.
+            print("[SharingManager] restoreParticipantStateIfNeeded: zones not visible yet — isParticipant+isPro restored, sync deferred until next refresh")
         }
     }
 

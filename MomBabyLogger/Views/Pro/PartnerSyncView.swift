@@ -31,6 +31,8 @@ struct PartnerSyncView: View {
     // Local, temporary UI state. Not saved to disk. Only this view owns it.
     @State private var showDisconnectConfirm   = false
     @State private var shareURLForPresentation: URL? = nil
+    @State private var showJoinSheet           = false
+    @State private var joinURLText             = ""
 
     var body: some View {
         List {
@@ -72,6 +74,7 @@ struct PartnerSyncView: View {
                     pendingRow
                 } else {
                     inviteRow
+                    joinRow
                 }
             }
 
@@ -108,12 +111,39 @@ struct PartnerSyncView: View {
                     }
                 }
             }
+
+            // ── DEBUG State Inspector ─────────────────────────────────────
+            #if DEBUG
+            Section(header: Text("DEBUG — Raw Sync State")) {
+                Group {
+                    debugRow("isPro", "\(sync.isPro)")
+                    debugRow("isParticipant", "\(sync.isParticipant)")
+                    debugRow("isPartnerConnected", "\(sync.isPartnerConnected)")
+                    debugRow("hasPartnerShare", "\(sync.hasPartnerShare)")
+                    debugRow("hasAcceptedShare", "\(SyncStateManager.shared.hasAcceptedShare)")
+                    debugRow("syncStatus", sync.syncStatus.label)
+                }
+                Button(role: .destructive) {
+                    SyncStateManager.shared.isPro = false
+                    SyncStateManager.shared.isParticipant = false
+                    SyncStateManager.shared.isPartnerConnected = false
+                    SyncStateManager.shared.hasPartnerShare = false
+                    SyncStateManager.shared.hasAcceptedShare = false
+                    SyncStateManager.shared.syncStatus = .notEnabled
+                    sharing.activeShare = nil
+                } label: {
+                    Text("Force Reset State")
+                        .foregroundColor(AppTheme.Colors.destructiveAction)
+                }
+            }
+            #endif
         }
         .scrollContentBackground(.hidden)
         .background(AppTheme.Colors.appBackground)
         .navigationTitle("Partner Sync")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            await sharing.restoreParticipantStateIfNeeded()
             // Participants don't own a share — skip loadExistingShare to avoid errors.
             if !sync.isParticipant {
                 await sharing.loadExistingShare()
@@ -127,6 +157,9 @@ struct PartnerSyncView: View {
             if let url = shareURLForPresentation {
                 ActivityShareSheet(url: url)
             }
+        }
+        .sheet(isPresented: $showJoinSheet) {
+            NavigationStack { joinByURLView }
         }
         .confirmationDialog(
             sync.isParticipant ? "Leave Shared Log?" : sync.isPartnerConnected ? "Disconnect Partner?" : "Cancel Invite?",
@@ -249,6 +282,84 @@ struct PartnerSyncView: View {
         .disabled(sharing.isLoading)
     }
 
+    // Shown below inviteRow so a second parent or nanny can join from a pasted link
+    // instead of tapping the URL — required on Mac where URL routing is unreliable.
+    private var joinRow: some View {
+        Button {
+            joinURLText = ""
+            sharing.errorMessage = nil
+            showJoinSheet = true
+        } label: {
+            HStack {
+                Label("Join with invite link", systemImage: "link.badge.plus")
+                    .font(AppTheme.Typography.bodyMedium)
+                    .foregroundColor(AppTheme.Colors.secondaryText)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(AppTheme.Colors.tertiaryText)
+            }
+        }
+        .disabled(sharing.isLoading)
+    }
+
+    private var joinByURLView: some View {
+        Form {
+            Section {
+                TextField("https://www.icloud.com/cloudkit/share/…", text: $joinURLText)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+            } header: {
+                Text("Paste the invite link you received")
+            } footer: {
+                Text("Copy the link the other parent sent and paste it above.")
+                    .font(AppTheme.Typography.labelSmall)
+            }
+
+            if let msg = sharing.errorMessage {
+                Section {
+                    Text(msg)
+                        .font(AppTheme.Typography.bodyMedium)
+                        .foregroundColor(AppTheme.Colors.destructiveAction)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(AppTheme.Colors.appBackground)
+        .navigationTitle("Join Shared Log")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    sharing.errorMessage = nil
+                    showJoinSheet = false
+                }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                if sharing.isLoading {
+                    ProgressView()
+                } else {
+                    Button("Join") {
+                        let trimmed = joinURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard let url = URL(string: trimmed) else {
+                            sharing.errorMessage = "Please paste a valid invite link."
+                            return
+                        }
+                        Task {
+                            await sharing.acceptShareByURL(url)
+                            if sharing.errorMessage == nil {
+                                showJoinSheet = false
+                            }
+                        }
+                    }
+                    .disabled(joinURLText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
     // Shown on Phone 2 (the partner / nanny who accepted the invite).
     private var participantStatusRow: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -346,6 +457,20 @@ struct PartnerSyncView: View {
         }
         .padding(.vertical, 8)
     }
+
+    #if DEBUG
+    private func debugRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(AppTheme.Typography.labelSmall)
+                .foregroundColor(AppTheme.Colors.tertiaryText)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(AppTheme.Colors.primaryText)
+        }
+    }
+    #endif
 
     private func stepRow(number: String, text: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
