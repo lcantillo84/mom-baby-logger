@@ -394,17 +394,15 @@ class SharingManager: ObservableObject {
                 try? await Task.sleep(for: .seconds(3))
             }
 
+            // Always start sync whether or not the zone was confirmed visible.
+            // NOT calling this when polling times out leaves Phone 2 permanently stuck:
+            // it has all-true state flags but fetchChanges() never runs this session,
+            // and background pushes only call fetchChanges() which idles on empty zones.
+            CloudKitManager.shared.startSyncAfterJoining()
             if zoneReady {
-                // Zone is confirmed visible — safe to run sync now. fetchSharedChanges()
-                // will find the zone and pull all shared entries without resetting state.
-                CloudKitManager.shared.startSyncAfterJoining()
                 print("[SharingManager] acceptShare: zone confirmed — sync started")
             } else {
-                // Zone never appeared (can happen on Mac Catalyst dev builds).
-                // Participant state is already set above. CloudKit will eventually send a
-                // background push that triggers fetchChanges() — or the user can tap
-                // "Refresh Logs" in the Partner Sync view to pull manually.
-                print("[SharingManager] acceptShare: WARNING — zone not visible after 45s. State is set; sync will run on next background push or manual refresh.")
+                print("[SharingManager] acceptShare: zone not visible after 45s — sync attempted anyway; fetchSharedChanges() will idle if zone still empty")
             }
 
         } catch {

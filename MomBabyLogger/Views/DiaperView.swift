@@ -18,6 +18,7 @@ struct DiaperView: View {
     @FocusState private var focusedField: FocusField?
     @State private var showingPartnerSync = false
     @State private var showingProGate = false
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationStack {
@@ -81,12 +82,19 @@ struct DiaperView: View {
             .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button { showingSettings = true } label: {
+                        Image(systemName: "gear")
+                            .foregroundColor(AppTheme.Colors.primaryAction)
+                    }
                     partnerSyncButton
                 }
             }
             .navigationDestination(isPresented: $showingPartnerSync) {
                 PartnerSyncView().environmentObject(dataStore)
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView().environmentObject(dataStore)
             }
             .keyboardDoneButton(focusedField: $focusedField)
             .alert("Success!", isPresented: $showingConfirmation) {

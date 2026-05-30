@@ -26,6 +26,7 @@ struct FeedingView: View {
     @FocusState private var focusedField: FocusField?
     @State private var showingPartnerSync = false
     @State private var showingProGate = false
+    @State private var showingSettings = false
 
     @State private var selectedSide: BreastSide = .left
     @State private var manualMinutes: Double = 10
@@ -113,12 +114,19 @@ struct FeedingView: View {
             .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button { showingSettings = true } label: {
+                        Image(systemName: "gear")
+                            .foregroundColor(AppTheme.Colors.primaryAction)
+                    }
                     partnerSyncButton
                 }
             }
             .navigationDestination(isPresented: $showingPartnerSync) {
                 PartnerSyncView().environmentObject(dataStore)
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView().environmentObject(dataStore)
             }
             .keyboardDoneButton(focusedField: $focusedField)
             .sheet(isPresented: $showingBreastTimer) {

@@ -14,6 +14,7 @@ struct HistoryView: View {
     @State private var entryToEdit: EntryWrapper?
     @State private var showingPartnerSync = false
     @State private var showingProGate = false
+    @State private var showingSettings = false
 
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -64,7 +65,11 @@ struct HistoryView: View {
             .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button { showingSettings = true } label: {
+                        Image(systemName: "gear")
+                            .foregroundColor(AppTheme.Colors.primaryAction)
+                    }
                     partnerSyncButton
                 }
             }
@@ -76,6 +81,9 @@ struct HistoryView: View {
         .sheet(item: $entryToEdit) { entry in
             EditEntryView(entry: entry)
                 .environmentObject(dataStore)
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView().environmentObject(dataStore)
         }
         .sheet(isPresented: $showingProGate) {
             ProGateView()

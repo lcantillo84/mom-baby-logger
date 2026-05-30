@@ -11,6 +11,7 @@ struct InsightsView: View {
     @ObservedObject private var sync = SyncStateManager.shared
     @State private var showingProGate = false
     @State private var showingPartnerSync = false
+    @State private var showingSettings = false
 
     private var weekData: [DayInsight] {
         let calendar = Calendar.current
@@ -45,7 +46,11 @@ struct InsightsView: View {
             .toolbarBackground(AppTheme.Colors.appBackground, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button { showingSettings = true } label: {
+                        Image(systemName: "gear")
+                            .foregroundColor(AppTheme.Colors.primaryAction)
+                    }
                     Button {
                         if sync.isPro || sync.isParticipant {
                             showingPartnerSync = true
@@ -69,6 +74,9 @@ struct InsightsView: View {
             .navigationDestination(isPresented: $showingPartnerSync) {
                 PartnerSyncView().environmentObject(dataStore)
             }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView().environmentObject(dataStore)
         }
         .sheet(isPresented: $showingProGate) {
             ProGateView()

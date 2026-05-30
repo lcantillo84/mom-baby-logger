@@ -40,11 +40,6 @@ struct ContentView: View {
                 .tabItem {
                     Label("Insights", systemImage: "chart.bar.fill")
                 }
-
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: "gear")
-                }
         }
         .tint(AppTheme.Colors.tabActive)
         .onAppear {

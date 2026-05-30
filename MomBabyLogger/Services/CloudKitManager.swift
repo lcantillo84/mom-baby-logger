@@ -134,10 +134,17 @@ class CloudKitManager: ObservableObject {
     func configure(with dataStore: DataStore) {
         self.dataStore = dataStore
         Task {
-            // Participant recovery: if the user reinstalled the app, AppStorage is wiped,
-            // but the shared zone still exists in iCloud. Check for it and restore state.
-            if !SyncStateManager.shared.isPro && !SyncStateManager.shared.isParticipant {
-                if let sharedZones = try? await sharedDB.allRecordZones(), !sharedZones.isEmpty {
+            if !SyncStateManager.shared.isPro {
+                // Case 1: hasAcceptedShare is the durable ground truth for participants.
+                // Restore state immediately without a CloudKit round-trip.
+                // This handles the case where fetchSharedChanges() previously wiped
+                // isParticipant + isPro due to an empty allRecordZones() response.
+                if SyncStateManager.shared.hasAcceptedShare || SyncStateManager.shared.isParticipant {
+                    SyncStateManager.shared.isParticipant = true
+                    SyncStateManager.shared.activatePro()
+                }
+                // Case 2: reinstall — AppStorage is gone but shared zone still exists in iCloud.
+                else if let sharedZones = try? await sharedDB.allRecordZones(), !sharedZones.isEmpty {
                     SyncStateManager.shared.isParticipant = true
                     SyncStateManager.shared.activatePro()
                 }
@@ -157,12 +164,21 @@ class CloudKitManager: ObservableObject {
     }
 
     // Called after Phone 2 accepts a share while the app is already running.
-    // When the app was already open, boot() ran earlier with isParticipant=false,
-    // so it set up owner subscriptions instead of participant ones.
-    // Re-running boot() here switches to the correct participant path:
-    // sets up the shared DB subscription and starts the Combine observer.
+    // Always clears shared zone tokens first so the subsequent fetchSharedChanges()
+    // does a full re-download instead of a delta that might start after Phone 1's
+    // entries were uploaded (producing "Up to date" with an empty data store).
     func startSyncAfterJoining() {
         guard dataStore != nil else { return }
+        clearSharedZoneTokens()
+        Task { await boot() }
+    }
+
+    // Clears the uploaded-entry tracking set and re-sends every local entry to
+    // CloudKit. Use when Phone 2 can't see Phone 1's historical entries — it means
+    // they were never successfully uploaded to the shared zone.
+    func forceReuploadAll() {
+        guard !SyncStateManager.shared.isParticipant else { return }
+        UserDefaults.standard.removeObject(forKey: kUploadedIDsKey)
         Task { await boot() }
     }
 
@@ -303,11 +319,9 @@ class CloudKitManager: ObservableObject {
     // Figures out which entries haven't been uploaded yet and sends them.
     // Also retries anything that failed before.
     private func syncNewEntries(_ currentEntries: [EntryWrapper]) async {
-        // Load the set of UUIDs we've already successfully uploaded.
         let uploadedIDs = loadUploadedIDs()
-
-        // Only send entries we haven't uploaded before.
         let toUpload = currentEntries.filter { !uploadedIDs.contains($0.id.uuidString) }
+        print("[CloudKit] syncNewEntries: total=\(currentEntries.count) alreadyUploaded=\(uploadedIDs.count) toUpload=\(toUpload.count)")
         guard !toUpload.isEmpty else { return }
 
         SyncStateManager.shared.markSyncing()
@@ -316,8 +330,13 @@ class CloudKitManager: ObservableObject {
 
     // Does the actual CKRecord save. Marks entries as uploaded or queues for retry.
     // Participants write to sharedDB (mom's zone); owner writes to privateDB.
+    // CloudKit recommends batches of ≤400 records per operation.
+    // Sending 1000+ records in one shot can trigger limitExceeded errors.
+    private let kUploadBatchSize = 400
+
     private func upload(entries toUpload: [EntryWrapper]) async {
         let (targetDB, targetZoneID) = await resolveUploadTarget()
+        let dbLabel = SyncStateManager.shared.isParticipant ? "sharedDB" : "privateDB"
 
         var records: [CKRecord] = []
         for entry in toUpload {
@@ -327,43 +346,50 @@ class CloudKitManager: ObservableObject {
         }
         guard !records.isEmpty else { return }
 
-        // 📖 SWIFT CONCEPT: CKModifyRecordsOperation
-        // This is like a shopping cart checkout — you can save multiple records
-        // in one round trip instead of one network call per record.
-        // Much more efficient and battery-friendly.
-        let operation = CKModifyRecordsOperation(
-            recordsToSave: records,
-            recordIDsToDelete: nil
-        )
-        operation.savePolicy = .ifServerRecordUnchanged  // safest for new records
-
-        do {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                operation.modifyRecordsResultBlock = { result in
-                    switch result {
-                    case .success:
-                        continuation.resume()
-                    case .failure(let error):
-                        continuation.resume(throwing: error)
-                    }
-                }
-                targetDB.add(operation)
-            }
-
-            // Mark them all as uploaded.
-            var uploaded = loadUploadedIDs()
-            for entry in toUpload {
-                uploaded.insert(entry.id.uuidString)
-                pendingRetryIDs.remove(entry.id.uuidString)
-            }
-            saveUploadedIDs(uploaded)
-            SyncStateManager.shared.markSynced()
-
-        } catch {
-            // Queue all failed IDs for retry next time the app gets internet.
-            for entry in toUpload { pendingRetryIDs.insert(entry.id.uuidString) }
-            SyncStateManager.shared.markError("Upload failed — will retry")
+        // Split into batches so we never exceed CloudKit's per-operation record limit.
+        let batches = stride(from: 0, to: records.count, by: kUploadBatchSize).map {
+            Array(records[$0..<min($0 + kUploadBatchSize, records.count)])
         }
+        print("[CloudKit] upload: \(records.count) record(s) → \(batches.count) batch(es) to \(dbLabel) zone=\(targetZoneID.zoneName)")
+
+        var successCount = 0
+        for (i, batch) in batches.enumerated() {
+            let operation = CKModifyRecordsOperation(recordsToSave: batch, recordIDsToDelete: nil)
+            operation.savePolicy = .ifServerRecordUnchanged
+
+            do {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    operation.modifyRecordsResultBlock = { result in
+                        switch result {
+                        case .success: continuation.resume()
+                        case .failure(let error): continuation.resume(throwing: error)
+                        }
+                    }
+                    targetDB.add(operation)
+                }
+                successCount += batch.count
+                print("[CloudKit] upload: batch \(i+1)/\(batches.count) SUCCESS (\(batch.count) records)")
+            } catch {
+                print("[CloudKit] upload: batch \(i+1)/\(batches.count) FAILED — \(error.localizedDescription)")
+                // Queue the entries in this failed batch for retry.
+                let failedEntries = toUpload.filter { entry in
+                    batch.contains { $0.recordID.recordName == entry.id.uuidString }
+                }
+                for entry in failedEntries { pendingRetryIDs.insert(entry.id.uuidString) }
+                SyncStateManager.shared.markError("Upload failed: \(error.localizedDescription)")
+                return
+            }
+        }
+
+        // All batches succeeded — mark every entry as uploaded.
+        var uploaded = loadUploadedIDs()
+        for entry in toUpload {
+            uploaded.insert(entry.id.uuidString)
+            pendingRetryIDs.remove(entry.id.uuidString)
+        }
+        saveUploadedIDs(uploaded)
+        print("[CloudKit] upload: ALL \(successCount) record(s) saved to \(dbLabel)")
+        SyncStateManager.shared.markSynced()
     }
 
     // Returns the right (database, zoneID) pair for uploads.
@@ -469,13 +495,21 @@ class CloudKitManager: ObservableObject {
     private func fetchSharedChanges(into dataStore: DataStore) async {
         do {
             let sharedZones = try await sharedDB.allRecordZones()
+            print("[CloudKit] fetchSharedChanges: allRecordZones returned \(sharedZones.count) zone(s)")
             guard !sharedZones.isEmpty else {
-                // No shared zones means Phone 1 revoked the share.
-                // Clear participant state so Phone 2's UI reflects the disconnect.
-                SyncStateManager.shared.isParticipant = false
-                SyncStateManager.shared.isPartnerConnected = false
-                SyncStateManager.shared.hasPartnerShare = false
-                SyncStateManager.shared.deactivatePro()
+
+                // Empty zones could mean Phone 1 revoked the share, OR it could be a
+                // transient CloudKit propagation delay. If hasAcceptedShare is true the user
+                // genuinely joined — don't wipe their Pro/participant state on a single empty
+                // response, because doing so permanently breaks sync until they manually
+                // navigate to PartnerSyncView (the only place restoreParticipantStateIfNeeded
+                // is called). Only clear state when we're sure they never accepted.
+                if !SyncStateManager.shared.hasAcceptedShare {
+                    SyncStateManager.shared.isParticipant = false
+                    SyncStateManager.shared.isPartnerConnected = false
+                    SyncStateManager.shared.hasPartnerShare = false
+                    SyncStateManager.shared.deactivatePro()
+                }
                 SyncStateManager.shared.markIdle()
                 return
             }
@@ -518,6 +552,7 @@ class CloudKitManager: ObservableObject {
                 }
             }
 
+            print("[CloudKit] fetchSharedChanges: received \(inboundEntries.count) new record(s) from sharedDB")
             if !inboundEntries.isEmpty {
                 var uploaded = loadUploadedIDs()
                 for entry in inboundEntries { uploaded.insert(entry.id.uuidString) }
@@ -527,6 +562,7 @@ class CloudKitManager: ObservableObject {
             SyncStateManager.shared.markSynced()
 
         } catch {
+            print("[CloudKit] fetchSharedChanges: FAILED — \(error.localizedDescription)")
             SyncStateManager.shared.markError("Fetch failed: \(error.localizedDescription)")
         }
     }

@@ -122,6 +122,16 @@ struct PartnerSyncView: View {
                     debugRow("hasPartnerShare", "\(sync.hasPartnerShare)")
                     debugRow("hasAcceptedShare", "\(SyncStateManager.shared.hasAcceptedShare)")
                     debugRow("syncStatus", sync.syncStatus.label)
+                    debugRow("localEntries", "\(dataStore.entries.count)")
+                    debugRow("uploadedIDs", "\((UserDefaults.standard.stringArray(forKey: "mommyslog.uploadedEntryIDs") ?? []).count)")
+                }
+                if !sync.isParticipant {
+                    Button {
+                        CloudKitManager.shared.forceReuploadAll()
+                    } label: {
+                        Text("Force Re-upload All Entries (Phone 1)")
+                            .foregroundColor(AppTheme.Colors.primaryAction)
+                    }
                 }
                 Button(role: .destructive) {
                     SyncStateManager.shared.isPro = false
@@ -385,7 +395,15 @@ struct PartnerSyncView: View {
             }
 
             Button {
-                Task { await CloudKitManager.shared.fetchChanges() }
+                Task {
+                    // Clear the shared zone token so this fetch returns ALL records
+                    // from the beginning, not just deltas since the last fetch.
+                    // Without this, a stale token can cause "Up to date" with an
+                    // empty data store if the token was saved before Phone 1's
+                    // entries were uploaded.
+                    CloudKitManager.shared.clearSharedZoneTokens()
+                    await CloudKitManager.shared.fetchChanges()
+                }
             } label: {
                 Label("Refresh Logs", systemImage: "arrow.clockwise")
                     .font(AppTheme.Typography.bodyMedium)

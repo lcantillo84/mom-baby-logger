@@ -11,6 +11,7 @@ import UserNotifications
 @main
 struct MomBabyLoggerApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
 
     // The single DataStore for the whole app. @StateObject means SwiftUI owns it.
     @StateObject private var dataStore = DataStore()
@@ -52,6 +53,14 @@ struct MomBabyLoggerApp: App {
                     CloudKitManager.shared.configure(with: dataStore)
                     SubscriptionManager.shared.startTransactionListener()
                     Task { await SubscriptionManager.shared.checkCurrentEntitlements() }
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    // Pull any new entries whenever the user brings the app to the foreground.
+                    // Silent push notifications are unreliable — this ensures Phone 2 always
+                    // sees up-to-date data without having to open PartnerSyncView manually.
+                    if newPhase == .active {
+                        Task { await CloudKitManager.shared.fetchChanges() }
+                    }
                 }
         }
     }
