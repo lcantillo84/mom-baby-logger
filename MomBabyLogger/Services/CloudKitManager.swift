@@ -477,7 +477,12 @@ class CloudKitManager: ObservableObject {
             }
 
             if !inboundEntries.isEmpty {
-                var uploaded = loadUploadedIDs()
+                // Entries from fetchPrivateChanges that we didn't upload ourselves
+                // were logged by the partner device — mark them for UI display.
+                let myUploadedIDs = loadUploadedIDs()
+                let fromPartner = inboundEntries.filter { !myUploadedIDs.contains($0.id.uuidString) }
+                markPartnerEntries(fromPartner)
+                var uploaded = myUploadedIDs
                 for entry in inboundEntries { uploaded.insert(entry.id.uuidString) }
                 saveUploadedIDs(uploaded)
                 dataStore.applyInboundEntries(inboundEntries)
@@ -554,6 +559,7 @@ class CloudKitManager: ObservableObject {
 
             print("[CloudKit] fetchSharedChanges: received \(inboundEntries.count) new record(s) from sharedDB")
             if !inboundEntries.isEmpty {
+                markPartnerEntries(inboundEntries)
                 var uploaded = loadUploadedIDs()
                 for entry in inboundEntries { uploaded.insert(entry.id.uuidString) }
                 saveUploadedIDs(uploaded)
@@ -626,6 +632,25 @@ class CloudKitManager: ObservableObject {
         UserDefaults.standard.set(Array(ids), forKey: kUploadedIDsKey)
     }
 
+    // ─── Partner Entry Tracking ────────────────────────────────────────────
+    // Tracks which entry UUIDs arrived via inbound sync (i.e. were logged by
+    // the other device). Used by ActivityRowView to show a partner badge.
+    // Does NOT modify any model — purely an external lookup table.
+
+    private let kPartnerEntryIDsKey = "mommyslog.partnerEntryIDs"
+
+    func isPartnerEntry(_ id: UUID) -> Bool {
+        let ids = UserDefaults.standard.stringArray(forKey: kPartnerEntryIDsKey) ?? []
+        return ids.contains(id.uuidString)
+    }
+
+    private func markPartnerEntries(_ entries: [EntryWrapper]) {
+        guard !entries.isEmpty else { return }
+        var ids = Set(UserDefaults.standard.stringArray(forKey: kPartnerEntryIDsKey) ?? [])
+        entries.forEach { ids.insert($0.id.uuidString) }
+        UserDefaults.standard.set(Array(ids), forKey: kPartnerEntryIDsKey)
+    }
+
     // ─── Shared Zone Token Persistence ────────────────────────────────────
     // Each shared zone gets its own change token, keyed by zone record name.
 
@@ -653,5 +678,7 @@ class CloudKitManager: ObservableObject {
         UserDefaults.standard.dictionaryRepresentation().keys
             .filter { $0.hasPrefix(prefix) }
             .forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        // Also clear partner entry IDs so the next full fetch re-marks them correctly.
+        UserDefaults.standard.removeObject(forKey: kPartnerEntryIDsKey)
     }
 }

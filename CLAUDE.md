@@ -69,15 +69,20 @@ Use `AppTheme.Spacing.*` and `AppTheme.Radius.*` constants.
 ## Architecture
 
 ```
-ContentView (TabView — 5 tabs)
+ContentView (TabView — 6 tabs)
 ├── FeedingView — log breast/bottle/formula
 ├── DiaperView — log wet/poop/mixed
-├── TodayView — daily stats + recent activity
+├── TodayView — daily stats + recent activity  [person.2 button → Partner Sync]
 ├── HistoryView — full history, swipe to edit/delete
+├── InsightsView — weekly charts (Pro)
 └── SettingsView — reminders, export, data management
+
+All main tabs have a person.2 icon (top-right nav bar) → Partner Sync / ProGate.
 
 DataStore (@StateObject in ContentView, @EnvironmentObject everywhere else)
 └── Persists to UserDefaults + Document backup JSON
+
+Pro / Partner Sync state lives in SyncStateManager.shared (@AppStorage keys).
 ```
 
 ---
@@ -99,3 +104,46 @@ xcodebuild -scheme MomBabyLogger -destination 'platform=iOS Simulator,name=iPhon
 3. Use `AppTheme.*` for all visual tokens
 4. Test on both iPhone (portrait) and iPad (landscape)
 5. Never add third-party dependencies without discussion
+
+---
+
+## Partner Sync — Architecture & Debug Reference
+
+**Milestone achieved:** Zone-based CloudKit sharing (v1.5+). Both parents share a single `MommysLogZone`; all entries sync both ways automatically.
+
+### Key files
+| File | Role |
+|---|---|
+| `Services/SharingManager.swift` | Owns share creation, invite URL, accept flow, leave/revoke |
+| `Services/SyncStateManager.swift` | Published state: `isPro`, `isParticipant`, `isPartnerConnected`, `hasAcceptedShare` |
+| `Services/CloudKitManager.swift` | **OFF-LIMITS** — handles zone fetch, subscription, entry upload |
+| `AppDelegate+CloudKit.swift` | **OFF-LIMITS** — routes share-acceptance URL from iOS to `SharingManager.acceptShare()` |
+| `Views/Pro/PartnerSyncView.swift` | Sync control panel; includes `#if DEBUG` state inspector |
+
+### How the share works
+- **Share type:** `CKShare(recordZoneID:)` — zone-based, shares ALL records in `MommysLogZone` automatically
+- **Zone requirement:** Zone must have `.zoneWideSharing` capability (auto-assigned on iOS 15+). If missing, `migrateZoneForZoneWideSharing()` deletes + recreates the zone; entries are safe in DataStore (UserDefaults) and re-upload automatically
+- **Permission:** `publicPermission = .readWrite` — partner can both view and log entries
+- **Invite URL:** CloudKit generates the URL server-side; it survives app relaunches via `UserDefaults` key `mommyslog.shareRecordName`
+
+### Stop sharing — what happens
+- **Owner (Phone 1) disconnects** → `revokeShare()` deletes the CKShare from iCloud → CloudKit push arrives on Phone 2 → `fetchSharedChanges()` sees empty zones → auto-revokes Phone 2's access + deactivates Pro
+- **Partner (Phone 2) leaves** → `leaveShare()` clears local state only → Phone 1's share stays active → Phone 1 can re-invite any time
+
+### Critical bug that was fixed (race condition)
+`CloudKitManager.fetchSharedChanges()` resets `isParticipant=false` + calls `deactivatePro()` when `sharedDB.allRecordZones()` returns empty (e.g. zone propagation takes 5–45s on Mac Catalyst). Fix: `hasAcceptedShare` is a raw `UserDefaults` key (NOT `@AppStorage`) that CloudKitManager never touches. `SharingManager.restoreParticipantStateIfNeeded()` re-applies participant state on every Partner Sync screen open.
+
+### Debug logging
+All `[SharingManager]` prints go through `smLog()` — a `#if DEBUG`-gated helper. They compile **out** in App Store Release builds but stay in the source. To temporarily enable in Release, change `#if DEBUG` to `if true` in the `smLog()` function.
+
+Key log markers to watch:
+```
+[SharingManager] restoreParticipantStateIfNeeded: hasAcceptedShare=...   ← fires every Partner Sync open
+[SharingManager] acceptShareByURL: fetching metadata for ...              ← Join flow started
+[SharingManager] acceptShare: called — containerID=...                    ← URL routing fired (iOS)
+[SharingManager] acceptShare: CKAcceptSharesOperation succeeded           ← share accepted
+[SharingManager] restoreParticipantStateIfNeeded: sharedDB zones=N        ← N>0 = zone ready, sync will start
+```
+
+### Debug panel (in-app)
+`PartnerSyncView` has a `#if DEBUG` section at the bottom showing live values of all 6 state keys and a "Force Reset State" button for clean test runs. Strips from App Store builds automatically.

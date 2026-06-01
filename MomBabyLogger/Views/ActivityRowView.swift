@@ -7,6 +7,7 @@ import SwiftUI
 
 struct ActivityRowView: View {
     let entry: EntryWrapper
+    var isPartnerEntry: Bool = false
 
     private var timeFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -24,10 +25,24 @@ struct ActivityRowView: View {
                 .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(timeFormatter.string(from: entry.timestamp))
-                    .font(AppTheme.Typography.bodyMedium)
-                    .fontWeight(.semibold)
-                    .foregroundColor(AppTheme.Colors.primaryText)
+                HStack(spacing: 8) {
+                    Text(timeFormatter.string(from: entry.timestamp))
+                        .font(AppTheme.Typography.bodyMedium)
+                        .fontWeight(.semibold)
+                        .foregroundColor(AppTheme.Colors.primaryText)
+
+                    if isPartnerEntry {
+                        Text("Partner")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.primaryAction)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(AppTheme.Colors.primaryAction.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+
+                    Spacer()
+                }
 
                 Text(entry.displayText)
                     .font(AppTheme.Typography.bodySmall)
@@ -40,8 +55,6 @@ struct ActivityRowView: View {
                         .lineLimit(2)
                 }
             }
-
-            Spacer()
         }
         .padding(.vertical, 8)
     }

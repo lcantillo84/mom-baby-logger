@@ -188,7 +188,7 @@ struct PartnerSyncView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(sync.isParticipant
-                 ? "You will lose access to the shared baby log."
+                 ? "You'll stop syncing with your partner. Your existing shared logs will stay on this device."
                  : sync.isPartnerConnected
                     ? "Your partner will immediately lose access to the shared logs."
                     : "The invite link will stop working. You can send a new invite anytime.")

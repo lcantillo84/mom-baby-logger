@@ -32,7 +32,7 @@ struct HistoryView: View {
                         ForEach(dataStore.entriesByDay(), id: \.date) { dayGroup in
                             Section(header: dayHeader(for: dayGroup.date)) {
                                 ForEach(dayGroup.entries) { entry in
-                                    ActivityRowView(entry: entry)
+                                    ActivityRowView(entry: entry, isPartnerEntry: CloudKitManager.shared.isPartnerEntry(entry.id))
                                         .listRowBackground(AppTheme.Colors.cardBackground)
                                         .swipeActions(edge: .trailing) {
                                             Button {

@@ -44,7 +44,7 @@ struct TodayView: View {
                                 .padding(.horizontal)
 
                             ForEach(todayEntries.sorted { $0.timestamp > $1.timestamp }) { entry in
-                                ActivityRowView(entry: entry)
+                                ActivityRowView(entry: entry, isPartnerEntry: CloudKitManager.shared.isPartnerEntry(entry.id))
                                     .padding(.horizontal, AppTheme.Spacing.md)
                                     .padding(.vertical, 4)
                                     .background(AppTheme.Colors.cardBackground)
