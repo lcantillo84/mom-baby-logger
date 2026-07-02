@@ -92,13 +92,6 @@ struct InsightsView: View {
                 feedingChartCard
                 diaperChartCard
 
-                // AI Daily Digest HELD for a later release. It calls the Claude API with an
-                // embedded key (extractable from a shipped binary) and sends data to a third
-                // party (needs a privacy-label/policy update). Re-enable once the key lives
-                // behind a backend proxy. The on-device next-feeding prediction (AIPredictionCard
-                // in TodayView) ships now — it makes no network calls and carries no such risk.
-                // AIDigestCard(entries: dataStore.entries)
-
                 disclaimer
                     .padding(.horizontal)
                     .padding(.bottom, AppTheme.Spacing.xl)
