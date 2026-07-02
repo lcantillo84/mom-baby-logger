@@ -89,6 +89,17 @@ class AppVersionManager {
                 ]
             ),
 
+            "1.6.0": WhatsNewContent(
+                version: "1.6.0",
+                title: "Widget, AI Predictions & Better Sync",
+                features: [
+                    WhatsNewFeature(icon: "apps.iphone",     title: "Home Screen Widget",     description: "See time since the last feeding at a glance — without opening the app"),
+                    WhatsNewFeature(icon: "brain",           title: "AI Feeding Predictions", description: "Learns your baby's rhythm and predicts the next feeding"),
+                    WhatsNewFeature(icon: "person.2.fill",   title: "Smarter Partner Sync",   description: "Faster and more reliable — edits and deletes now sync both ways"),
+                    WhatsNewFeature(icon: "bell.badge.fill", title: "Feeding Reminders",      description: "A gentle nudge when the next feeding is due")
+                ]
+            ),
+
             // FUTURE UPDATES: Add new versions here
         ]
 

@@ -108,29 +108,57 @@ struct ProInsightsSection: View {
 
     private var lockedTeaser: some View {
         Button(action: onUnlockTap) {
-            HStack(spacing: 12) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 18))
-                    .foregroundColor(AppTheme.Colors.primaryAction)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Unlock Pro Insights")
-                        .font(AppTheme.Typography.bodyLarge)
-                        .fontWeight(.semibold)
-                        .foregroundColor(AppTheme.Colors.primaryText)
-                    Text("Time since last feeding, trends & averages")
-                        .font(AppTheme.Typography.labelSmall)
-                        .foregroundColor(AppTheme.Colors.secondaryText)
+            VStack(spacing: 0) {
+                lockedRow(icon: "lock.fill",     iconColor: AppTheme.Colors.primaryAction,
+                          title: "Unlock Pro Insights",
+                          detail: "Time since last feeding, trends & averages",
+                          showDivider: true)
+                lockedRow(icon: "brain",          iconColor: AppTheme.Colors.primaryAction,
+                          title: "AI Patterns",
+                          detail: "Feeding predictions and anomaly alerts",
+                          showDivider: false)
+
+                HStack {
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(AppTheme.Colors.tertiaryText)
+                        .padding(.trailing, AppTheme.Spacing.sm)
+                        .padding(.bottom, AppTheme.Spacing.sm)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(AppTheme.Colors.tertiaryText)
             }
-            .padding()
             .background(AppTheme.Colors.primaryAction.opacity(0.08))
             .cornerRadius(AppTheme.Radius.card)
             .modifier(CardShadow())
             .padding(.horizontal)
+        }
+    }
+
+    private func lockedRow(icon: String, iconColor: Color, title: String, detail: String, showDivider: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundColor(iconColor)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AppTheme.Typography.bodyMedium)
+                        .fontWeight(.semibold)
+                        .foregroundColor(AppTheme.Colors.primaryText)
+                    Text(detail)
+                        .font(AppTheme.Typography.labelSmall)
+                        .foregroundColor(AppTheme.Colors.secondaryText)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, AppTheme.Spacing.md)
+            .padding(.vertical, AppTheme.Spacing.sm)
+
+            if showDivider {
+                Divider()
+                    .padding(.horizontal, AppTheme.Spacing.md)
+            }
         }
     }
 

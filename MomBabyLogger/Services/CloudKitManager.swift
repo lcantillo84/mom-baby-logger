@@ -21,6 +21,7 @@
 
 import CloudKit
 import Combine
+import CryptoKit
 import Foundation
 
 // ⚠️ IMPORTANT: Replace this string with your actual CloudKit container ID.
@@ -40,6 +41,15 @@ private let kRecordType = "Entry"
 private let kServerChangeTokenKey = "mommyslog.serverChangeToken"
 private let kZoneCreatedKey       = "mommyslog.zoneCreated"
 private let kPendingUploadIDsKey  = "mommyslog.pendingUploadIDs"
+
+// All `[CloudKit]` diagnostic logging goes through this. It compiles OUT of App Store
+// (Release) builds, so production stays quiet, while debug builds keep full sync tracing.
+// To temporarily see these in a Release build, change `#if DEBUG` to `if true`.
+private func ckLog(_ message: String) {
+    #if DEBUG
+    print(message)
+    #endif
+}
 
 // 📖 SWIFT CONCEPT: @MainActor
 // CloudKit callbacks come back on background threads.
@@ -92,6 +102,36 @@ class CloudKitManager: ObservableObject {
     // Combine subscriptions need to be "held" somewhere or they cancel immediately.
     // Storing them in this Set keeps them alive as long as CloudKitManager is alive.
     private var cancellables = Set<AnyCancellable>()
+
+    // Holds the periodic refresh timer so it stays alive while sync is active.
+    // Fires every 60 seconds to catch entries logged on the partner device while
+    // both phones are in the foreground (scenePhase doesn't change in that case).
+    private var refreshTimer: AnyCancellable?
+
+    // Tracks how many consecutive times fetchSharedChanges() has seen empty zones
+    // while hasAcceptedShare is true. A single empty response could be a transient
+    // CloudKit propagation delay. Three in a row almost certainly means the owner
+    // revoked the share — surface an actionable error after the threshold.
+    private var consecutiveEmptyZones = 0
+
+    // Guards the Combine observer from reacting to deletions we make locally
+    // when applying an inbound edit (delete old version, re-add updated version).
+    // Without this, deleting the old version would trigger syncDeletedEntries
+    // which would remove the record from CloudKit right before we re-add it.
+    private var isApplyingInboundEdits = false
+
+    // Guards against concurrent fetches. Multiple triggers (silent push, 60s timer, foreground,
+    // PartnerSyncView open) can call fetchChanges() at once; two overlapping inbound applies both
+    // compute "existing IDs" before either appends, then both add the same record → duplicate
+    // entries. Serializing fetches prevents that.
+    private var isFetching = false
+
+    // Guards against concurrent OUTBOUND syncs. The observer, boot, foreground push, and
+    // PartnerSyncView open can all run syncNewEntries/syncEditedEntries at once. Each does a
+    // read-modify-write on the fingerprints/uploadedIDs in UserDefaults, so concurrent runs
+    // clobber each other's saves — fingerprints never persist, so every cycle re-flags ALL
+    // entries as "edited" and re-uploads the whole history forever. Serializing fixes it.
+    private var isSyncingOutbound = false
 
     // UUIDs of entries we tried to upload but failed (e.g. no internet).
     // Persisted in UserDefaults so we retry on next launch.
@@ -191,16 +231,20 @@ class CloudKitManager: ObservableObject {
             // Participant path: zone lives in sharedDB — subscribe there instead.
             if SyncStateManager.shared.isParticipant {
                 try await setupSharedSubscriptionIfNeeded()
+                if let ds = dataStore {
+                    await performOutboundSync(ds.entries)
+                }
             } else {
                 try await setupZoneIfNeeded()
                 try await setupSubscriptionIfNeeded()
-                // Eagerly upload any local entries not yet in iCloud.
-                // Catches entries logged before Pro was activated or before the share was created.
-                if let ds = dataStore { await syncNewEntries(ds.entries) }
+                if let ds = dataStore {
+                    await performOutboundSync(ds.entries)
+                }
             }
             observeDataStore()
             await fetchChanges()
             await retryPending()
+            startPeriodicRefresh()
         } catch {
             SyncStateManager.shared.markError("Setup failed: \(error.localizedDescription)")
         }
@@ -308,8 +352,12 @@ class CloudKitManager: ObservableObject {
                 guard let self else { return }
                 // isApplyingInboundSync = true means we just got data FROM iCloud.
                 // We must NOT upload it back — that would create an infinite loop.
-                guard !dataStore.isApplyingInboundSync else { return }
-                Task { await self.syncNewEntries(newEntries) }
+                // isApplyingInboundEdits = true means we're mid delete+re-add for an
+                // inbound edit — don't react to the temporary deletion either.
+                guard !dataStore.isApplyingInboundSync, !self.isApplyingInboundEdits else {
+                    return
+                }
+                Task { await self.performOutboundSync(newEntries) }
             }
             .store(in: &cancellables)  // keep the subscription alive
     }
@@ -321,11 +369,116 @@ class CloudKitManager: ObservableObject {
     private func syncNewEntries(_ currentEntries: [EntryWrapper]) async {
         let uploadedIDs = loadUploadedIDs()
         let toUpload = currentEntries.filter { !uploadedIDs.contains($0.id.uuidString) }
-        print("[CloudKit] syncNewEntries: total=\(currentEntries.count) alreadyUploaded=\(uploadedIDs.count) toUpload=\(toUpload.count)")
+        ckLog("[CloudKit] syncNewEntries: total=\(currentEntries.count) alreadyUploaded=\(uploadedIDs.count) toUpload=\(toUpload.count)")
         guard !toUpload.isEmpty else { return }
 
         SyncStateManager.shared.markSyncing()
         await upload(entries: toUpload)
+    }
+
+    // Detects entries deleted locally that still exist in CloudKit and removes them.
+    // Without this, deleted entries come back as "zombies" after reconnect or forceRefetchAll.
+    // Also propagates the deletion to the other phone via recordWithIDWasDeletedBlock.
+    // Safe for both owner (privateDB) and participant (sharedDB) — resolveUploadTarget() routes correctly.
+    private func syncDeletedEntries(_ currentEntries: [EntryWrapper]) async {
+        // HARD GUARD against spurious deletions. While we're applying inbound edits (which
+        // delete-then-readd locally) or doing a full re-fetch, an entry can be momentarily
+        // absent from currentEntries without the user having deleted anything. Acting on that
+        // transient gap would wrongly delete the record from CloudKit and propagate the deletion
+        // to the partner. Only treat an entry as user-deleted when no inbound/fetch is in flight.
+        if isApplyingInboundEdits || isFetching || (dataStore?.isApplyingInboundSync ?? false) {
+            return
+        }
+
+        let uploaded = loadUploadedIDs()
+        let currentIDs = Set(currentEntries.map { $0.id.uuidString })
+        let deletedIDs = uploaded.subtracting(currentIDs)
+
+        guard !deletedIDs.isEmpty else { return }
+        ckLog("[CloudKit] syncDeletedEntries: \(deletedIDs.count) locally-deleted entry(ies) — removing from CloudKit")
+
+        guard let (targetDB, targetZoneID) = await resolveUploadTarget() else {
+            ckLog("[CloudKit] syncDeletedEntries: zone unavailable — will retry on next cycle")
+            return
+        }
+
+        let recordIDs = deletedIDs.map { CKRecord.ID(recordName: $0, zoneID: targetZoneID) }
+        let operation = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: recordIDs)
+
+        do {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                operation.modifyRecordsResultBlock = { result in
+                    switch result {
+                    case .success: cont.resume()
+                    case .failure(let err): cont.resume(throwing: err)
+                    }
+                }
+                targetDB.add(operation)
+            }
+            var remaining = loadUploadedIDs()
+            deletedIDs.forEach { remaining.remove($0) }
+            saveUploadedIDs(remaining)
+            // Remove fingerprints for deleted entries so stale data doesn't accumulate.
+            var fps = loadFingerprints()
+            deletedIDs.forEach { fps.removeValue(forKey: $0) }
+            saveFingerprints(fps)
+            ckLog("[CloudKit] syncDeletedEntries: removed \(deletedIDs.count) record(s) from CloudKit")
+        } catch {
+            ckLog("[CloudKit] syncDeletedEntries: FAILED — \(error.localizedDescription)")
+        }
+    }
+
+    // Detects entries that were already uploaded but whose content changed locally
+    // (e.g. user edited the time, notes, or ounces) and re-uploads them.
+    // Uses a fingerprint dictionary (short hash of JSON) to detect changes.
+    // Entries with no stored fingerprint were uploaded before fingerprinting was added —
+    // treat them as potentially edited and re-upload. uploadEdited() saves their fingerprint
+    // on success, so this only fires once per entry.
+    private func syncEditedEntries(_ currentEntries: [EntryWrapper]) async {
+        let uploaded = loadUploadedIDs()
+        var fingerprints = loadFingerprints()
+        var edited: [EntryWrapper] = []
+        var baselineChanged = false
+
+        for entry in currentEntries {
+            let id = entry.id.uuidString
+            guard uploaded.contains(id) else { continue }
+            let current = entryFingerprint(entry)   // normalized "F|…" / "D|…" string
+
+            guard let stored = fingerprints[id] else {
+                // Never tracked — adopt the current content as the baseline WITHOUT
+                // re-uploading. CloudKit already holds this entry; future real edits
+                // will be detected by comparing fingerprints.
+                fingerprints[id] = current
+                baselineChanged = true
+                continue
+            }
+
+            if stored == current { continue }   // unchanged
+
+            // Distinguish a REAL EDIT from a one-time fingerprint-FORMAT migration. The current
+            // format is the normalized "F|…|…" / "D|…|…" string (always contains "|"). Older
+            // stored fingerprints were SHA-256 hex / base64 prefixes (no "|"). Only treat it as
+            // a format migration when the STORED value isn't the new format. (The old code used
+            // a LENGTH check — but normalized fingerprints vary in length with the oz value and
+            // note, so a genuine edit that changed the length was wrongly skipped as a migration.
+            // That was the bug that stopped owner edits from ever uploading.)
+            if !stored.contains("|") {
+                fingerprints[id] = current
+                baselineChanged = true
+                continue
+            }
+
+            // Both are normalized fingerprints and genuinely differ → a real edit.
+            edited.append(entry)
+        }
+
+        if baselineChanged { saveFingerprints(fingerprints) }
+        guard !edited.isEmpty else {
+            return
+        }
+        ckLog("[CloudKit] syncEditedEntries: \(edited.count) edited entry(ies) — re-uploading to CloudKit")
+        await uploadEdited(entries: edited)
     }
 
     // Does the actual CKRecord save. Marks entries as uploaded or queues for retry.
@@ -334,28 +487,49 @@ class CloudKitManager: ObservableObject {
     // Sending 1000+ records in one shot can trigger limitExceeded errors.
     private let kUploadBatchSize = 400
 
+    // Removes entries that share a UUID (keeps the first of each). CloudKit rejects ANY
+    // operation containing two records with the same recordID ("you can't save the same
+    // record twice"), which permanently failed every batch that held a duplicate and stalled
+    // all syncing. Duplicates were created by earlier concurrent-fetch churn.
+    private func deduplicatedByID(_ entries: [EntryWrapper]) -> [EntryWrapper] {
+        var seen = Set<String>()
+        return entries.filter { seen.insert($0.id.uuidString).inserted }
+    }
+
     private func upload(entries toUpload: [EntryWrapper]) async {
-        let (targetDB, targetZoneID) = await resolveUploadTarget()
+        // If the shared zone isn't available yet, queue everything for retry.
+        // This prevents writing to the wrong database while CloudKit propagates.
+        guard let (targetDB, targetZoneID) = await resolveUploadTarget() else {
+            ckLog("[CloudKit] upload: shared zone unavailable — queuing \(toUpload.count) entry(ies) for retry")
+            for entry in toUpload { pendingRetryIDs.insert(entry.id.uuidString) }
+            SyncStateManager.shared.markError("Sync pending — will retry shortly")
+            return
+        }
         let dbLabel = SyncStateManager.shared.isParticipant ? "sharedDB" : "privateDB"
 
-        var records: [CKRecord] = []
-        for entry in toUpload {
-            if let record = makeRecord(from: entry, zoneID: targetZoneID) {
-                records.append(record)
-            }
+        // Batch the ENTRIES (not records) so progress can be persisted after EACH batch.
+        // The old code saved uploadedIDs only after ALL batches finished, so a single batch
+        // failure (or the app closing mid-upload) discarded all progress — uploadedIDs fell
+        // back to 0 and the whole history re-uploaded next time, never converging.
+        // Drop duplicate UUIDs — CloudKit rejects an operation with two records of the same ID.
+        let uniqueEntries = deduplicatedByID(toUpload)
+        let entryBatches = stride(from: 0, to: uniqueEntries.count, by: kUploadBatchSize).map {
+            Array(uniqueEntries[$0..<min($0 + kUploadBatchSize, uniqueEntries.count)])
         }
-        guard !records.isEmpty else { return }
+        ckLog("[CloudKit] upload: \(uniqueEntries.count) unique entry(ies) → \(entryBatches.count) batch(es) to \(dbLabel) zone=\(targetZoneID.zoneName)")
 
-        // Split into batches so we never exceed CloudKit's per-operation record limit.
-        let batches = stride(from: 0, to: records.count, by: kUploadBatchSize).map {
-            Array(records[$0..<min($0 + kUploadBatchSize, records.count)])
-        }
-        print("[CloudKit] upload: \(records.count) record(s) → \(batches.count) batch(es) to \(dbLabel) zone=\(targetZoneID.zoneName)")
+        var anyFailed = false
+        for (i, entryBatch) in entryBatches.enumerated() {
+            let records = entryBatch.compactMap { makeRecord(from: $0, zoneID: targetZoneID) }
+            guard !records.isEmpty else { continue }
 
-        var successCount = 0
-        for (i, batch) in batches.enumerated() {
-            let operation = CKModifyRecordsOperation(recordsToSave: batch, recordIDsToDelete: nil)
-            operation.savePolicy = .ifServerRecordUnchanged
+            let operation = CKModifyRecordsOperation(recordsToSave: records, recordIDsToDelete: nil)
+            // .allKeys (overwrite) not .ifServerRecordUnchanged: the local entry is the source
+            // of truth for the owner's own logs. .ifServerRecordUnchanged rejects any entry whose
+            // server copy exists but whose local change-tag was lost (from earlier churn), and
+            // because the zone commits atomically that ONE rejection fails the whole batch — so a
+            // brand-new log bundled with stale ones never uploads.
+            operation.savePolicy = .allKeys
 
             do {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -367,44 +541,129 @@ class CloudKitManager: ObservableObject {
                     }
                     targetDB.add(operation)
                 }
-                successCount += batch.count
-                print("[CloudKit] upload: batch \(i+1)/\(batches.count) SUCCESS (\(batch.count) records)")
-            } catch {
-                print("[CloudKit] upload: batch \(i+1)/\(batches.count) FAILED — \(error.localizedDescription)")
-                // Queue the entries in this failed batch for retry.
-                let failedEntries = toUpload.filter { entry in
-                    batch.contains { $0.recordID.recordName == entry.id.uuidString }
+                // Persist progress for THIS batch immediately — it can never reset to 0.
+                var uploaded = loadUploadedIDs()
+                var fps = loadFingerprints()
+                for entry in entryBatch {
+                    uploaded.insert(entry.id.uuidString)
+                    pendingRetryIDs.remove(entry.id.uuidString)
+                    fps[entry.id.uuidString] = entryFingerprint(entry)
                 }
-                for entry in failedEntries { pendingRetryIDs.insert(entry.id.uuidString) }
-                SyncStateManager.shared.markError("Upload failed: \(error.localizedDescription)")
-                return
+                saveUploadedIDs(uploaded)
+                saveFingerprints(fps)
+                ckLog("[CloudKit] upload: batch \(i+1)/\(entryBatches.count) SUCCESS (\(entryBatch.count)) — uploadedIDs now \(uploaded.count)")
+            } catch {
+                ckLog("[CloudKit] upload: batch \(i+1)/\(entryBatches.count) FAILED — \(error.localizedDescription)")
+                for entry in entryBatch { pendingRetryIDs.insert(entry.id.uuidString) }
+                anyFailed = true
+                // Keep going — other batches (incl. a brand-new log) can still succeed and persist.
             }
         }
 
-        // All batches succeeded — mark every entry as uploaded.
-        var uploaded = loadUploadedIDs()
-        for entry in toUpload {
-            uploaded.insert(entry.id.uuidString)
-            pendingRetryIDs.remove(entry.id.uuidString)
+        if anyFailed {
+            SyncStateManager.shared.markError("Some entries will retry shortly")
+        } else {
+            ckLog("[CloudKit] upload: ALL entries saved to \(dbLabel)")
+            SyncStateManager.shared.markSynced()
         }
-        saveUploadedIDs(uploaded)
-        print("[CloudKit] upload: ALL \(successCount) record(s) saved to \(dbLabel)")
-        SyncStateManager.shared.markSynced()
     }
 
-    // Returns the right (database, zoneID) pair for uploads.
-    // Participant → sharedDB using the discovered shared zone.
+    // Uploads EDITS to existing entries. The previous version overwrote a fresh, tag-less
+    // CKRecord with savePolicy = .allKeys — which the PARTICIPANT's zone-change delta did NOT
+    // report (owner edits never reached the partner). This version does a proper
+    // fetch-modify-save: fetch the existing server record (carrying its recordChangeTag),
+    // write the new fields, and save with the change-tag-aware policy. That registers a real
+    // modification in the zone change feed, which the participant's delta reports normally.
+    //
+    // Edits are rare and arrive one at a time (the normalized fingerprint prevents the old
+    // "everything edited" storm), so per-record fetch-modify-save is cheap here.
+    private func uploadEdited(entries toUpload: [EntryWrapper]) async {
+        guard let (targetDB, targetZoneID) = await resolveUploadTarget() else {
+            ckLog("[CloudKit] uploadEdited: zone unavailable — skipping \(toUpload.count) edited entry(ies)")
+            return
+        }
+        let uniqueEntries = deduplicatedByID(toUpload)
+        guard !uniqueEntries.isEmpty else { return }
+
+        let dbLabel = SyncStateManager.shared.isParticipant ? "sharedDB" : "privateDB"
+        var succeeded = 0
+        for entry in uniqueEntries {
+            let short = entry.id.uuidString.prefix(8)
+            let recordID = CKRecord.ID(recordName: entry.id.uuidString, zoneID: targetZoneID)
+            do {
+                // Fetch the existing record so we carry its recordChangeTag. If it isn't on the
+                // server yet, fall back to a fresh record (treated as a create).
+                let serverRecord: CKRecord
+                do {
+                    serverRecord = try await targetDB.record(for: recordID)
+                } catch let ckError as CKError where ckError.code == .unknownItem {
+                    serverRecord = CKRecord(recordType: kRecordType, recordID: recordID)
+                }
+                applyEntryFields(entry, to: serverRecord)
+
+                do {
+                    try await saveRecord(serverRecord, to: targetDB, policy: .ifServerRecordUnchanged)
+                } catch let ckError as CKError where ckError.code == .serverRecordChanged {
+                    // Someone changed it server-side between our fetch and save. Re-fetch the
+                    // latest, re-apply our fields, and save with changedKeys to win the conflict.
+                    let latest = try await targetDB.record(for: recordID)
+                    applyEntryFields(entry, to: latest)
+                    try await saveRecord(latest, to: targetDB, policy: .changedKeys)
+                }
+
+                // Persist the fingerprint immediately so this entry isn't re-flagged next cycle.
+                var fps = loadFingerprints()
+                fps[entry.id.uuidString] = entryFingerprint(entry)
+                saveFingerprints(fps)
+                succeeded += 1
+            } catch {
+            }
+        }
+        ckLog("[CloudKit] uploadEdited: \(succeeded)/\(uniqueEntries.count) edited record(s) saved")
+        if succeeded > 0 { SyncStateManager.shared.markSynced() }
+    }
+
+    // Saves a single CKRecord with the given save policy, bridging the callback API to async.
+    private func saveRecord(_ record: CKRecord, to db: CKDatabase, policy: CKModifyRecordsOperation.RecordSavePolicy) async throws {
+        let operation = CKModifyRecordsOperation(recordsToSave: [record], recordIDsToDelete: nil)
+        operation.savePolicy = policy
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            operation.modifyRecordsResultBlock = { result in
+                switch result {
+                case .success: cont.resume()
+                case .failure(let err): cont.resume(throwing: err)
+                }
+            }
+            db.add(operation)
+        }
+    }
+
+    // Returns the right (database, zoneID) pair for uploads, or nil if unavailable.
+    // Participant → sharedDB using the discovered shared zone (retries 3×).
     // Owner       → privateDB using our own zone.
-    private func resolveUploadTarget() async -> (CKDatabase, CKRecordZone.ID) {
+    //
+    // WHY nil instead of a privateDB fallback for participants:
+    // The old code fell back to the participant's own privateDB when the shared zone
+    // wasn't found yet (transient CloudKit delay). That silently wrote the entry to
+    // the wrong database — Phone 1 (owner) could never see it. Returning nil instead
+    // queues the entry for retry so it uploads to the correct zone once available.
+    private func resolveUploadTarget() async -> (CKDatabase, CKRecordZone.ID)? {
         guard SyncStateManager.shared.isParticipant else {
             return (privateDB, zone.zoneID)
         }
-        if let sharedZone = try? await sharedDB.allRecordZones()
-            .first(where: { $0.zoneID.zoneName == kZoneName }) {
-            return (sharedDB, sharedZone.zoneID)
+        // Retry up to 3 times with increasing delays (2s, 4s) to ride out
+        // transient CloudKit zone-propagation delays without writing to wrong DB.
+        for attempt in 1...3 {
+            if let sharedZone = try? await sharedDB.allRecordZones()
+                .first(where: { $0.zoneID.zoneName == kZoneName }) {
+                return (sharedDB, sharedZone.zoneID)
+            }
+            if attempt < 3 {
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+            }
         }
-        // Fallback: no shared zone found yet — write to private as a safety net.
-        return (privateDB, zone.zoneID)
+        ckLog("[CloudKit] resolveUploadTarget: shared zone not found after 3 attempts — will retry later")
+        return nil
     }
 
     // Retries any entries that failed to upload on a previous session.
@@ -420,12 +679,56 @@ class CloudKitManager: ObservableObject {
         await upload(entries: entriesToRetry)
     }
 
+    // Pushes locally-pending changes (new / deleted / edited) UP to CloudKit.
+    // Lightweight — no zone/subscription setup, unlike boot(). Call this on foreground:
+    // entries logged just before the app was backgrounded may never have triggered the
+    // 1.5s debounce observer, so without this they sit un-uploaded (localEntries > uploadedIDs)
+    // and the partner never sees them. This closes that gap.
+    func pushPendingChanges() async {
+        guard let ds = dataStore else { return }
+        await performOutboundSync(ds.entries)
+    }
+
+    // Serialized outbound sync — the ONLY path that runs new/deleted/edited uploads. The guard
+    // ensures one pass completes (and persists fingerprints/uploadedIDs) before the next starts,
+    // so concurrent triggers can't clobber saved state and re-trigger the full-history storm.
+    private func performOutboundSync(_ entries: [EntryWrapper]) async {
+        guard SyncStateManager.shared.isPro else {
+            return
+        }
+        guard !isSyncingOutbound else {
+            return
+        }
+        isSyncingOutbound = true
+        defer { isSyncingOutbound = false }
+        await syncNewEntries(entries)
+        await syncDeletedEntries(entries)
+        await syncEditedEntries(entries)
+    }
+
     // ─── Inbound Sync (iCloud → App) ───────────────────────────────────────
 
     // Called when a silent push arrives OR when the app comes to the foreground.
     // Owner fetches from privateDB; participant fetches from sharedDB.
+    // Foreground / pull-to-refresh entry point. For a PARTICIPANT, this first clears the shared
+    // zone token so the fetch returns ALL records — because CloudKit's shared-database delta feed
+    // does NOT reliably report the OWNER's edits to existing records to the participant. A full
+    // re-fetch catches them, and it's cheap now: the normalized fingerprint means only entries
+    // whose content actually changed get re-applied (no storm, no churn). The frequent 60s timer
+    // still uses the cheap delta — this fuller fetch only runs on foreground and manual refresh.
+    func fetchOnForeground() async {
+        if SyncStateManager.shared.isParticipant {
+            clearSharedZoneTokens()
+        }
+        await fetchChanges()
+    }
+
     func fetchChanges() async {
         guard SyncStateManager.shared.isPro, let dataStore else { return }
+        // Serialize fetches — overlapping inbound applies create duplicate entries.
+        guard !isFetching else { return }
+        isFetching = true
+        defer { isFetching = false }
         SyncStateManager.shared.markSyncing()
 
         if SyncStateManager.shared.isParticipant {
@@ -440,6 +743,7 @@ class CloudKitManager: ObservableObject {
     // Instead of "give me ALL records", this says "give me only what changed
     // since my last bookmark (serverChangeToken)." Efficient and battery-friendly.
     private func fetchPrivateChanges(into dataStore: DataStore) async {
+        ckLog("[CloudKit] fetchPrivateChanges: starting, token=\(serverChangeToken != nil ? "exists" : "nil")")
         let config = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
         config.previousServerChangeToken = serverChangeToken
 
@@ -449,6 +753,7 @@ class CloudKitManager: ObservableObject {
         )
 
         var inboundEntries: [EntryWrapper] = []
+        var deletedRecordNames: [String] = []
 
         operation.recordWasChangedBlock = { [weak self] _, result in
             guard let self else { return }
@@ -456,6 +761,11 @@ class CloudKitManager: ObservableObject {
                let entry = makeEntry(from: record) {
                 inboundEntries.append(entry)
             }
+        }
+
+        // Fires when the partner deleted an entry we still have locally.
+        operation.recordWithIDWasDeletedBlock = { recordID, _ in
+            deletedRecordNames.append(recordID.recordName)
         }
 
         operation.recordZoneFetchResultBlock = { [weak self] _, result in
@@ -476,20 +786,55 @@ class CloudKitManager: ObservableObject {
                 privateDB.add(operation)
             }
 
+            // Apply remote deletions (partner deleted an entry on their device).
+            for recordName in deletedRecordNames {
+                if let uuid = UUID(uuidString: recordName),
+                   let entry = dataStore.entries.first(where: { $0.id == uuid }) {
+                    dataStore.deleteEntry(entry)
+                    var uploaded = loadUploadedIDs()
+                    uploaded.remove(recordName)
+                    saveUploadedIDs(uploaded)
+                    ckLog("[CloudKit] fetchPrivateChanges: applied remote deletion for \(recordName)")
+                }
+            }
+
+            ckLog("[CloudKit] fetchPrivateChanges: received \(inboundEntries.count) new record(s) from privateDB")
             if !inboundEntries.isEmpty {
-                // Entries from fetchPrivateChanges that we didn't upload ourselves
-                // were logged by the partner device — mark them for UI display.
                 let myUploadedIDs = loadUploadedIDs()
                 let fromPartner = inboundEntries.filter { !myUploadedIDs.contains($0.id.uuidString) }
                 markPartnerEntries(fromPartner)
+
+                // Handle inbound edits: applyInboundEntries() only ADDS new UUIDs, so for an
+                // entry that already exists locally we must replace it ourselves. EntryWrapper
+                // is Equatable — compare the decoded content directly. If it differs (partner
+                // edited time/oz/notes) delete the local copy so the updated version is re-added
+                // below. Identical entries are left untouched — no churn, no migration storm.
+                isApplyingInboundEdits = true
+                for entry in inboundEntries {
+                    if let existing = dataStore.entries.first(where: { $0.id == entry.id }),
+                       entryFingerprint(existing) != entryFingerprint(entry) {
+                        dataStore.deleteEntry(existing)
+                        ckLog("[CloudKit] fetchPrivateChanges: applying inbound edit for \(entry.id)")
+                    }
+                }
+                isApplyingInboundEdits = false
+
+                dataStore.applyInboundEntries(inboundEntries)
                 var uploaded = myUploadedIDs
                 for entry in inboundEntries { uploaded.insert(entry.id.uuidString) }
                 saveUploadedIDs(uploaded)
-                dataStore.applyInboundEntries(inboundEntries)
+                // Save fingerprints for ALL inbound entries — new AND edited.
+                // Without this, an entry logged on Phone 2 arrives here with no fingerprint.
+                // If Phone 1 then edits it, syncEditedEntries sees "no fingerprint → initialise"
+                // and silently skips the re-upload on the very first edit.
+                var fps = loadFingerprints()
+                for entry in inboundEntries { fps[entry.id.uuidString] = entryFingerprint(entry) }
+                saveFingerprints(fps)
             }
             SyncStateManager.shared.markSynced()
 
         } catch {
+            ckLog("[CloudKit] fetchPrivateChanges: FAILED — \(error.localizedDescription)")
             SyncStateManager.shared.markError("Fetch failed: \(error.localizedDescription)")
         }
     }
@@ -500,31 +845,46 @@ class CloudKitManager: ObservableObject {
     private func fetchSharedChanges(into dataStore: DataStore) async {
         do {
             let sharedZones = try await sharedDB.allRecordZones()
-            print("[CloudKit] fetchSharedChanges: allRecordZones returned \(sharedZones.count) zone(s)")
+            ckLog("[CloudKit] fetchSharedChanges: allRecordZones returned \(sharedZones.count) zone(s)")
             guard !sharedZones.isEmpty else {
-
-                // Empty zones could mean Phone 1 revoked the share, OR it could be a
-                // transient CloudKit propagation delay. If hasAcceptedShare is true the user
-                // genuinely joined — don't wipe their Pro/participant state on a single empty
-                // response, because doing so permanently breaks sync until they manually
-                // navigate to PartnerSyncView (the only place restoreParticipantStateIfNeeded
-                // is called). Only clear state when we're sure they never accepted.
-                if !SyncStateManager.shared.hasAcceptedShare {
+                if SyncStateManager.shared.hasAcceptedShare {
+                    // User genuinely joined — empty zones may be transient (CloudKit can take
+                    // 5-45s to propagate a newly created zone). Count consecutive misses:
+                    // after 3 in a row the share was most likely revoked by the owner.
+                    consecutiveEmptyZones += 1
+                    ckLog("[CloudKit] fetchSharedChanges: zones empty, hasAcceptedShare=true (streak: \(consecutiveEmptyZones))")
+                    if consecutiveEmptyZones >= 3 {
+                        SyncStateManager.shared.markError("Partner may have disconnected — open Partner Sync to check")
+                    } else {
+                        SyncStateManager.shared.markIdle()
+                    }
+                } else {
                     SyncStateManager.shared.isParticipant = false
                     SyncStateManager.shared.isPartnerConnected = false
                     SyncStateManager.shared.hasPartnerShare = false
                     SyncStateManager.shared.deactivatePro()
+                    SyncStateManager.shared.markIdle()
                 }
-                SyncStateManager.shared.markIdle()
                 return
             }
+            consecutiveEmptyZones = 0  // zones found — streak broken, reset counter
 
             var inboundEntries: [EntryWrapper] = []
+            var deletedRecordNames: [String] = []
+            // Every record ID the fetch reported present, whether or not it decoded. Used ONLY on a
+            // full (tokenless) fetch to reconcile owner-side deletions — CloudKit does not fire
+            // recordWithIDWasDeletedBlock when there is no prior token.
+            var fetchedRecordIDs = Set<String>()
+            // True only if EVERY shared zone started with no token (a full fetch). A full fetch's
+            // result set is authoritative; a delta fetch's is not, so we only prune on a full fetch.
+            var isFullFetch = true
 
             for sharedZone in sharedZones {
                 let zoneID = sharedZone.zoneID
+                let priorToken = loadSharedToken(for: zoneID)
+                if priorToken != nil { isFullFetch = false }
                 let config = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
-                config.previousServerChangeToken = loadSharedToken(for: zoneID)
+                config.previousServerChangeToken = priorToken
 
                 let operation = CKFetchRecordZoneChangesOperation(
                     recordZoneIDs: [zoneID],
@@ -533,10 +893,17 @@ class CloudKitManager: ObservableObject {
 
                 operation.recordWasChangedBlock = { [weak self] _, result in
                     guard let self else { return }
-                    if case .success(let record) = result,
-                       let entry = makeEntry(from: record) {
-                        inboundEntries.append(entry)
+                    if case .success(let record) = result {
+                        fetchedRecordIDs.insert(record.recordID.recordName)
+                        if let entry = makeEntry(from: record) {
+                            inboundEntries.append(entry)
+                        }
                     }
+                }
+
+                // Fires when the owner deleted an entry we still have locally.
+                operation.recordWithIDWasDeletedBlock = { recordID, _ in
+                    deletedRecordNames.append(recordID.recordName)
                 }
 
                 operation.recordZoneFetchResultBlock = { [weak self] fetchedZoneID, result in
@@ -557,18 +924,81 @@ class CloudKitManager: ObservableObject {
                 }
             }
 
-            print("[CloudKit] fetchSharedChanges: received \(inboundEntries.count) new record(s) from sharedDB")
+            // Apply remote deletions (owner deleted an entry on their device).
+            for recordName in deletedRecordNames {
+                if let uuid = UUID(uuidString: recordName),
+                   let entry = dataStore.entries.first(where: { $0.id == uuid }) {
+                    dataStore.deleteEntry(entry)
+                    var uploaded = loadUploadedIDs()
+                    uploaded.remove(recordName)
+                    saveUploadedIDs(uploaded)
+                    ckLog("[CloudKit] fetchSharedChanges: applied remote deletion for \(recordName)")
+                }
+            }
+
+            // Full-fetch deletion reconciliation. A tokenless full fetch returns the authoritative
+            // set of records in the shared zone but does NOT fire recordWithIDWasDeletedBlock, so an
+            // owner deletion made while this device was backgrounded is never removed by the delete
+            // block above (foreground + pull-to-refresh clear the token → full fetch → the delete is
+            // missed and the entry lingers forever). Safely prune: remove local entries we KNOW were
+            // on the server (present in uploadedIDs) that are now absent from the full fetch. Entries
+            // created on THIS device but not yet uploaded aren't in uploadedIDs, so they're preserved.
+            // Guarded by non-empty fetchedRecordIDs so a transient empty response can never wipe all.
+            if isFullFetch && !fetchedRecordIDs.isEmpty {
+                let uploaded = loadUploadedIDs()
+                let localIDs = Set(dataStore.entries.map { $0.id.uuidString })
+                let deletedOnServer = uploaded.intersection(localIDs).subtracting(fetchedRecordIDs)
+                if !deletedOnServer.isEmpty {
+                    isApplyingInboundEdits = true
+                    for idStr in deletedOnServer {
+                        if let uuid = UUID(uuidString: idStr),
+                           let entry = dataStore.entries.first(where: { $0.id == uuid }) {
+                            dataStore.deleteEntry(entry)
+                        }
+                    }
+                    isApplyingInboundEdits = false
+                    var remaining = loadUploadedIDs()
+                    deletedOnServer.forEach { remaining.remove($0) }
+                    saveUploadedIDs(remaining)
+                    var fps = loadFingerprints()
+                    deletedOnServer.forEach { fps.removeValue(forKey: $0) }
+                    saveFingerprints(fps)
+                    ckLog("[CloudKit] fetchSharedChanges: reconciled \(deletedOnServer.count) owner-deleted entr(ies) from full fetch")
+                }
+            }
+
+            ckLog("[CloudKit] fetchSharedChanges: received \(inboundEntries.count) new record(s) from sharedDB")
             if !inboundEntries.isEmpty {
                 markPartnerEntries(inboundEntries)
+
+                // Same inbound-edit handling as fetchPrivateChanges: EntryWrapper is Equatable,
+                // so compare decoded content directly and only replace when it actually differs.
+                isApplyingInboundEdits = true
+                for entry in inboundEntries {
+                    if let existing = dataStore.entries.first(where: { $0.id == entry.id }),
+                       entryFingerprint(existing) != entryFingerprint(entry) {
+                        dataStore.deleteEntry(existing)
+                        ckLog("[CloudKit] fetchSharedChanges: applying inbound edit for \(entry.id)")
+                    }
+                }
+                isApplyingInboundEdits = false
+
+                // Same save-order fix as fetchPrivateChanges: apply locally first,
+                // then mark as uploaded, so a crash between the two is recoverable.
+                dataStore.applyInboundEntries(inboundEntries)
                 var uploaded = loadUploadedIDs()
                 for entry in inboundEntries { uploaded.insert(entry.id.uuidString) }
                 saveUploadedIDs(uploaded)
-                dataStore.applyInboundEntries(inboundEntries)
+                // Same fingerprint fix as fetchPrivateChanges: save for ALL inbound entries
+                // so edits made on this device after receiving are detected immediately.
+                var fps = loadFingerprints()
+                for entry in inboundEntries { fps[entry.id.uuidString] = entryFingerprint(entry) }
+                saveFingerprints(fps)
             }
             SyncStateManager.shared.markSynced()
 
         } catch {
-            print("[CloudKit] fetchSharedChanges: FAILED — \(error.localizedDescription)")
+            ckLog("[CloudKit] fetchSharedChanges: FAILED — \(error.localizedDescription)")
             SyncStateManager.shared.markError("Fetch failed: \(error.localizedDescription)")
         }
     }
@@ -584,33 +1014,39 @@ class CloudKitManager: ObservableObject {
     // would require updating the CloudKit schema AND this mapping code. One JSON field
     // means the schema never needs to change.
 
-    private func makeRecord(from entry: EntryWrapper, zoneID: CKRecordZone.ID) -> CKRecord? {
+    // Writes an entry's fields onto a CKRecord. Used both when CREATING a fresh record
+    // (makeRecord) and when MODIFYING an existing server record fetched for an edit
+    // (uploadEdited) — so a single place defines the record shape. Returns false if the
+    // entry can't be encoded.
+    @discardableResult
+    private func applyEntryFields(_ entry: EntryWrapper, to record: CKRecord) -> Bool {
         guard let jsonData = try? JSONEncoder().encode(entry),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
-            return nil
+            return false
         }
-
-        // recordName = the entry's UUID. CloudKit uses this as the primary key.
-        // Two devices saving the same UUID = only one record (natural dedup).
-        let recordID = CKRecord.ID(recordName: entry.id.uuidString, zoneID: zoneID)
-        let record   = CKRecord(recordType: kRecordType, recordID: recordID)
-
         record["entryData"]      = jsonString as CKRecordValue
         record["entryTimestamp"] = entry.timestamp as CKRecordValue
         record["schemaVersion"]  = 1 as CKRecordValue
-
         switch entry {
         case .feeding: record["entryType"] = "feeding" as CKRecordValue
         case .diaper:  record["entryType"] = "diaper"  as CKRecordValue
         }
+        return true
+    }
 
-        return record
+    private func makeRecord(from entry: EntryWrapper, zoneID: CKRecordZone.ID) -> CKRecord? {
+        // recordName = the entry's UUID. CloudKit uses this as the primary key.
+        // Two devices saving the same UUID = only one record (natural dedup).
+        let recordID = CKRecord.ID(recordName: entry.id.uuidString, zoneID: zoneID)
+        let record   = CKRecord(recordType: kRecordType, recordID: recordID)
+        return applyEntryFields(entry, to: record) ? record : nil
     }
 
     private func makeEntry(from record: CKRecord) -> EntryWrapper? {
         guard let jsonString = record["entryData"] as? String,
               let jsonData   = jsonString.data(using: .utf8),
               let entry      = try? JSONDecoder().decode(EntryWrapper.self, from: jsonData) else {
+            ckLog("[CloudKit] makeEntry: JSON decode failed for record \(record.recordID.recordName)")
             return nil
         }
         return entry
@@ -630,6 +1066,51 @@ class CloudKitManager: ObservableObject {
 
     private func saveUploadedIDs(_ ids: Set<String>) {
         UserDefaults.standard.set(Array(ids), forKey: kUploadedIDsKey)
+    }
+
+    // ─── Entry Fingerprints ────────────────────────────────────────────────
+    // Tracks a short hash of each uploaded entry's JSON content.
+    // When the Combine observer fires, we compare current content against stored hashes
+    // to detect edits (same UUID, different content) and re-upload only changed entries.
+
+    private let kEntryFingerprintsKey = "mommyslog.entryFingerprints"
+
+    private func loadFingerprints() -> [String: String] {
+        (UserDefaults.standard.object(forKey: kEntryFingerprintsKey) as? [String: String]) ?? [:]
+    }
+
+    private func saveFingerprints(_ fps: [String: String]) {
+        UserDefaults.standard.set(fps, forKey: kEntryFingerprintsKey)
+    }
+
+    // Deterministic fingerprint of an entry's FULL content (SHA-256 of its JSON).
+    //
+    // ⚠️ Must hash the ENTIRE encoded entry, not a prefix. An earlier version used
+    // the first 16 base-64 chars (~12 JSON bytes) which only covered the wrapper key
+    // and the start of the UUID — edits to notes, oz, duration, or timestamp live
+    // later in the JSON and produced an IDENTICAL fingerprint, so edits were never
+    // detected (neither uploaded by the editor nor applied by the receiver).
+    //
+    // SHA-256 over the same JSON the record stores in `entryData` is stable across
+    // launches AND devices: makeEntry() decodes that same JSON string back, so the
+    // sender's hash and the receiver's hash match byte-for-byte.
+    private func entryFingerprint(_ entry: EntryWrapper) -> String {
+        // Stable, NORMALIZED fingerprint of an entry's MEANINGFUL content. Timestamps are rounded
+        // to whole seconds and doubles formatted to fixed decimals, so the JSON round-trip through
+        // CloudKit (which can shift sub-second Date precision) can NEVER produce a different
+        // fingerprint for the same logical entry. Hashing raw JSON did exactly that and caused a
+        // perpetual "everything edited" re-upload storm. Do NOT go back to hashing raw bytes.
+        switch entry {
+        case .feeding(let f):
+            let ts   = Int(f.timestamp.timeIntervalSince1970.rounded())
+            let dur  = Int(f.duration.rounded())
+            let amt  = f.amount.map { String(format: "%.2f", $0) } ?? "-"
+            let side = f.side.map { "\($0)" } ?? "-"
+            return "F|\(ts)|\(f.type)|\(side)|\(dur)|\(amt)|\(f.notes ?? "")"
+        case .diaper(let d):
+            let ts = Int(d.timestamp.timeIntervalSince1970.rounded())
+            return "D|\(ts)|\(d.type)|\(d.notes ?? "")"
+        }
     }
 
     // ─── Partner Entry Tracking ────────────────────────────────────────────
@@ -668,6 +1149,34 @@ class CloudKitManager: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: key)
         }
+    }
+
+    // Starts a 60-second repeating timer that calls fetchChanges().
+    // Handles the case where both phones are in the foreground simultaneously —
+    // scenePhase doesn't fire in that scenario so silent push is the only trigger,
+    // which iOS can throttle. The timer guarantees a maximum 60s sync lag.
+    private func startPeriodicRefresh() {
+        refreshTimer = Timer.publish(every: 60, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self else { return }
+                Task { await self.fetchChanges() }
+            }
+    }
+
+    // Clears change tokens so the next fetch re-downloads ALL records from iCloud.
+    // Owner (Phone 1) → clears private DB token.
+    // Participant (Phone 2) → clears shared zone tokens (same as clearSharedZoneTokens).
+    // Also clears partnerEntryIDs so partner badges are re-applied on full fetch.
+    func forceRefetchAll() {
+        ckLog("[CloudKit] forceRefetchAll: clearing tokens — next fetch will re-download everything")
+        if SyncStateManager.shared.isParticipant {
+            clearSharedZoneTokens()
+        } else {
+            serverChangeToken = nil
+        }
+        UserDefaults.standard.removeObject(forKey: kPartnerEntryIDsKey)
+        Task { await fetchChanges() }
     }
 
     // Wipes all shared zone change tokens so the next fetchSharedChanges()

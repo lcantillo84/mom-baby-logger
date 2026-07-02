@@ -6,8 +6,42 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C0FA86532FE6ED2200325B2F /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FA86522FE6ED2100325B2F /* WidgetKit.framework */; };
+		C0FA86552FE6ED2200325B2F /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0FA86542FE6ED2200325B2F /* SwiftUI.framework */; };
+		C0FA86662FE6ED2300325B2F /* MommysLogWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C0FA86502FE6ED2100325B2F /* MommysLogWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C0FA86642FE6ED2300325B2F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C0DC71702EC11F890008A0C4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C0FA864F2FE6ED2100325B2F;
+			remoteInfo = MommysLogWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C0FA866B2FE6ED2300325B2F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C0FA86662FE6ED2300325B2F /* MommysLogWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		C0DC71782EC11F890008A0C4 /* MomBabyLogger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MomBabyLogger.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0FA86502FE6ED2100325B2F /* MommysLogWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MommysLogWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0FA86522FE6ED2100325B2F /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		C0FA86542FE6ED2200325B2F /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		C0FA866C2FE6EE2800325B2F /* MommysLogWidgetExtensionDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MommysLogWidgetExtensionDebug.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -17,6 +51,13 @@
 				Info.plist,
 			);
 			target = C0DC71772EC11F890008A0C4 /* MomBabyLogger */;
+		};
+		C0FA866A2FE6ED2300325B2F /* Exceptions for "MommysLogWidget" folder in "MommysLogWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C0FA864F2FE6ED2100325B2F /* MommysLogWidgetExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -29,6 +70,14 @@
 			path = MomBabyLogger;
 			sourceTree = "<group>";
 		};
+		C0FA86562FE6ED2200325B2F /* MommysLogWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C0FA866A2FE6ED2300325B2F /* Exceptions for "MommysLogWidget" folder in "MommysLogWidgetExtension" target */,
+			);
+			path = MommysLogWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -39,13 +88,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0FA864D2FE6ED2100325B2F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0FA86552FE6ED2200325B2F /* SwiftUI.framework in Frameworks */,
+				C0FA86532FE6ED2200325B2F /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		C0DC716F2EC11F890008A0C4 = {
 			isa = PBXGroup;
 			children = (
+				C0FA866C2FE6EE2800325B2F /* MommysLogWidgetExtensionDebug.entitlements */,
 				C0DC717A2EC11F890008A0C4 /* MomBabyLogger */,
+				C0FA86562FE6ED2200325B2F /* MommysLogWidget */,
+				C0FA86512FE6ED2100325B2F /* Frameworks */,
 				C0DC71792EC11F890008A0C4 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,8 +115,18 @@
 			isa = PBXGroup;
 			children = (
 				C0DC71782EC11F890008A0C4 /* MomBabyLogger.app */,
+				C0FA86502FE6ED2100325B2F /* MommysLogWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C0FA86512FE6ED2100325B2F /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				C0FA86522FE6ED2100325B2F /* WidgetKit.framework */,
+				C0FA86542FE6ED2200325B2F /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -68,10 +139,12 @@
 				C0DC71742EC11F890008A0C4 /* Sources */,
 				C0DC71752EC11F890008A0C4 /* Frameworks */,
 				C0DC71762EC11F890008A0C4 /* Resources */,
+				C0FA866B2FE6ED2300325B2F /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				C0FA86652FE6ED2300325B2F /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				C0DC717A2EC11F890008A0C4 /* MomBabyLogger */,
@@ -83,6 +156,28 @@
 			productReference = C0DC71782EC11F890008A0C4 /* MomBabyLogger.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C0FA864F2FE6ED2100325B2F /* MommysLogWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0FA86672FE6ED2300325B2F /* Build configuration list for PBXNativeTarget "MommysLogWidgetExtension" */;
+			buildPhases = (
+				C0FA864C2FE6ED2100325B2F /* Sources */,
+				C0FA864D2FE6ED2100325B2F /* Frameworks */,
+				C0FA864E2FE6ED2100325B2F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C0FA86562FE6ED2200325B2F /* MommysLogWidget */,
+			);
+			name = MommysLogWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = MommysLogWidgetExtension;
+			productReference = C0FA86502FE6ED2100325B2F /* MommysLogWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -90,11 +185,14 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2610;
+				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					C0DC71772EC11F890008A0C4 = {
 						CreatedOnToolsVersion = 26.1;
+					};
+					C0FA864F2FE6ED2100325B2F = {
+						CreatedOnToolsVersion = 26.5;
 					};
 				};
 			};
@@ -113,12 +211,20 @@
 			projectRoot = "";
 			targets = (
 				C0DC71772EC11F890008A0C4 /* MomBabyLogger */,
+				C0FA864F2FE6ED2100325B2F /* MommysLogWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		C0DC71762EC11F890008A0C4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0FA864E2FE6ED2100325B2F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +241,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0FA864C2FE6ED2100325B2F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C0FA86652FE6ED2300325B2F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C0FA864F2FE6ED2100325B2F /* MommysLogWidgetExtension */;
+			targetProxy = C0FA86642FE6ED2300325B2F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		C0DC71812EC11F8B0008A0C4 /* Debug */ = {
@@ -268,7 +389,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = MomBabyLogger/MomBabyLoggerDebug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = C73JU9CH26;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -285,7 +406,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.3;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = lilycantilloapp.mommysblog;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -305,7 +426,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = MomBabyLogger/MomBabyLogger.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MomBabyLogger/Info.plist;
@@ -321,12 +442,75 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.3;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = lilycantilloapp.mommysblog;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		C0FA86682FE6ED2300325B2F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = MommysLogWidgetExtensionDebug.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = C73JU9CH26;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MommysLogWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MommysLogWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.6.0;
+				PRODUCT_BUNDLE_IDENTIFIER = lilycantilloapp.mommysblog.MommysLogWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C0FA86692FE6ED2300325B2F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = MommysLogWidgetExtensionDebug.entitlements;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MommysLogWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MommysLogWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.6.0;
+				PRODUCT_BUNDLE_IDENTIFIER = lilycantilloapp.mommysblog.MommysLogWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -351,6 +535,15 @@
 			buildConfigurations = (
 				C0DC71842EC11F8B0008A0C4 /* Debug */,
 				C0DC71852EC11F8B0008A0C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C0FA86672FE6ED2300325B2F /* Build configuration list for PBXNativeTarget "MommysLogWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0FA86682FE6ED2300325B2F /* Debug */,
+				C0FA86692FE6ED2300325B2F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

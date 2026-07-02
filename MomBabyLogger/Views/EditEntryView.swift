@@ -72,7 +72,10 @@ struct EditEntryView: View {
             }
             .scrollContentBackground(.hidden)
             .background(AppTheme.Colors.appBackground)
-            .dismissKeyboardOnTap()
+            // Native scroll-to-dismiss instead of a global .onTapGesture. The tap gesture
+            // competed with each text field's own tap, delaying the keyboard from opening.
+            // The keyboard "Done" button still dismisses explicitly.
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Edit Entry")
             .navigationBarTitleDisplayMode(.inline)
             .keyboardDoneButton(focusedField: $focusedField)

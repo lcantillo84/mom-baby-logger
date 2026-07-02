@@ -32,23 +32,32 @@ struct HistoryView: View {
                         ForEach(dataStore.entriesByDay(), id: \.date) { dayGroup in
                             Section(header: dayHeader(for: dayGroup.date)) {
                                 ForEach(dayGroup.entries) { entry in
+                                HStack(spacing: 0) {
                                     ActivityRowView(entry: entry, isPartnerEntry: CloudKitManager.shared.isPartnerEntry(entry.id))
-                                        .listRowBackground(AppTheme.Colors.cardBackground)
-                                        .swipeActions(edge: .trailing) {
-                                            Button {
-                                                entryToEdit = entry
-                                            } label: {
-                                                Label("Edit", systemImage: "pencil")
-                                            }
-                                            .tint(AppTheme.Colors.primaryAction)
+                                    Button {
+                                        entryToEdit = entry
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(AppTheme.Colors.primaryAction)
+                                            .frame(width: 40, height: 44)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
 
-                                            Button(role: .destructive) {
-                                                deleteEntry(entry)
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
-                                            }
-                                        }
+                                    Button {
+                                        deleteEntry(entry)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(AppTheme.Colors.destructiveAction)
+                                            .frame(width: 40, height: 44)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
                                 }
+                                .listRowBackground(AppTheme.Colors.cardBackground)
+                            }
                             }
                         }
                     }
@@ -169,7 +178,9 @@ struct HistoryView: View {
 
     private func refresh() async {
         isRefreshing = true
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        // Full re-fetch for participants so the owner's edits come through (the delta feed
+        // misses them). No-op extra cost for owners.
+        await CloudKitManager.shared.fetchOnForeground()
         isRefreshing = false
     }
 }

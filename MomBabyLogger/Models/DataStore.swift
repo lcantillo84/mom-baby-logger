@@ -149,6 +149,26 @@ class DataStore: ObservableObject {
         saveData()
     }
 
+    /// Removes entries that share a UUID, keeping the first occurrence of each.
+    /// Duplicates can arise from concurrent inbound CloudKit syncs (two fetches adding the
+    /// same record before either sees the other). They show as doubled rows in History and
+    /// break uploads ("can't save the same record twice"). This restores one-entry-per-id
+    /// integrity. Idempotent — does nothing when there are no duplicates. Returns the count removed.
+    @discardableResult
+    func removeDuplicates() -> Int {
+        var seen = Set<UUID>()
+        var deduped: [EntryWrapper] = []
+        for entry in entries where seen.insert(entry.id).inserted {
+            deduped.append(entry)
+        }
+        let removed = entries.count - deduped.count
+        if removed > 0 {
+            entries = deduped
+            saveData()
+        }
+        return removed
+    }
+
     // MARK: - Data Organization
 
     // Get entries grouped by day for display

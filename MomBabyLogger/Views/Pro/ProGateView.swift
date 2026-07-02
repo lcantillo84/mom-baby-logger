@@ -32,7 +32,7 @@ import Observation
 class SubscriptionManager {
 
     static let shared = SubscriptionManager()
-    private let productID = "lilycantilloapp.mommysblog.subscription.pro"
+    private let productID = "lilycantilloapp.mommysblog.pro.monthly"
 
     var product: Product?
     var isPurchasing: Bool = false
@@ -166,7 +166,7 @@ private enum StoreError: LocalizedError {
 struct ProGateView: View {
 
     @ObservedObject private var sync = SyncStateManager.shared
-    @State private var subscriptions = SubscriptionManager.shared
+    private let subscriptions = SubscriptionManager.shared
 
     @Environment(\.dismiss) private var dismiss
 
@@ -175,6 +175,7 @@ struct ProGateView: View {
     // The features list — easy to update without touching layout code.
     private let features: [(icon: String, title: String, detail: String)] = [
         ("person.2.fill",        "Partner & Nanny Sync",   "Share live logs with anyone helping with baby"),
+        ("brain",                "AI Insights",            "Next-feeding predictions & anomaly alerts"),
         ("chart.bar.fill",       "Daily Insights",         "Time since last feeding, trends & daily averages"),
         ("calendar.badge.clock", "Weekly Charts",          "7-day feeding and diaper charts at a glance"),
         ("icloud.fill",          "iCloud Backup",          "Baby's data is safe even if you lose your phone"),
@@ -322,9 +323,14 @@ struct ProGateView: View {
                     if SyncStateManager.shared.isPro { dismiss() }
                 }
             } label: {
-                Text("Restore Purchase")
-                    .font(AppTheme.Typography.bodyMedium)
-                    .foregroundColor(AppTheme.Colors.primaryAction)
+                if subscriptions.isPurchasing {
+                    ProgressView()
+                        .tint(AppTheme.Colors.primaryAction)
+                } else {
+                    Text("Restore Purchase")
+                        .font(AppTheme.Typography.bodyMedium)
+                        .foregroundColor(AppTheme.Colors.primaryAction)
+                }
             }
             .disabled(subscriptions.isPurchasing)
 

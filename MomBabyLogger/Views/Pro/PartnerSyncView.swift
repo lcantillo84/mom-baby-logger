@@ -85,6 +85,23 @@ struct PartnerSyncView: View {
                 }
             }
 
+            // ── Manual Sync (DEBUG only) ──────────────────────────────────
+            // Production sync self-heals with no user action: reconcileState() runs on launch,
+            // foreground, and when this screen opens; a 60s timer fetches; and History has
+            // pull-to-refresh. Regular paying users are NOT given a manual repair control —
+            // they just use Pro and it works. This button stays for our testing only.
+            #if DEBUG
+            if sync.isParticipant || sync.isPartnerConnected {
+                Section {
+                    Button {
+                        Task { await sharing.reconnectAndRepair() }
+                    } label: {
+                        Label("Reconnect & Repair (debug)", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+            }
+            #endif
+
             // ── Leave / Disconnect / Cancel ───────────────────────────────
             if sync.isParticipant {
                 Section {
@@ -133,6 +150,12 @@ struct PartnerSyncView: View {
                             .foregroundColor(AppTheme.Colors.primaryAction)
                     }
                 }
+                Button {
+                    SyncStateManager.shared.activatePro()
+                } label: {
+                    Text("Activate Pro (Test)")
+                        .foregroundColor(AppTheme.Colors.primaryAction)
+                }
                 Button(role: .destructive) {
                     SyncStateManager.shared.isPro = false
                     SyncStateManager.shared.isParticipant = false
@@ -153,11 +176,11 @@ struct PartnerSyncView: View {
         .navigationTitle("Partner Sync")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            await sharing.restoreParticipantStateIfNeeded()
-            // Participants don't own a share — skip loadExistingShare to avoid errors.
-            if !sync.isParticipant {
-                await sharing.loadExistingShare()
-            }
+            // One authoritative reconcile from CloudKit, then pull entries. Replaces the
+            // old split restoreParticipantStateIfNeeded + loadExistingShare paths that
+            // could leave owner and partner showing different connection states.
+            await sharing.reconcileState()
+            await CloudKitManager.shared.pushPendingChanges()
             await CloudKitManager.shared.fetchChanges()
         }
         .sheet(isPresented: Binding(

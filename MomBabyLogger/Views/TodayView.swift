@@ -24,11 +24,35 @@ struct TodayView: View {
         return DailyStats(from: todayEntries)
     }
 
+    // True once at least one feeding has ever been logged. Gates the reminder
+    // opt-in card so we ask for notification permission at a relevant moment
+    // (right after the user has shown intent by logging), not on a cold launch.
+    private var hasLoggedFeeding: Bool {
+        dataStore.entries.contains { entry in
+            if case .feeding = entry { return true }
+            return false
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
                     DailyStatsSection(stats: todayStats)
+
+                    if hasLoggedFeeding {
+                        ReminderOptInCard()
+                    }
+
+                    if !sync.isPro && !sync.isParticipant && dataStore.entries.count >= 5 {
+                        UpgradeNudgeBanner(onTap: { showingProGate = true })
+                    }
+
+                    // Next-feeding prediction is FREE for everyone — it's pure on-device
+                    // math (no API cost) and the daily "next feeding ~4:15pm" value is
+                    // what builds the reopen habit that drives retention. The paid AI
+                    // Daily Digest (real Claude API cost) stays Pro-only, gated in Insights.
+                    AIPredictionCard(entries: dataStore.entries)
 
                     ProInsightsSection(
                         todayStats: todayStats,

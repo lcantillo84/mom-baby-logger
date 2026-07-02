@@ -30,6 +30,23 @@ private func smLog(_ message: String) {
     #endif
 }
 
+// Single, authoritative description of this device's role in the share.
+// Derived ONLY by SharingManager.reconcileState() from CloudKit ground truth.
+// The UI reads this instead of guessing from the five scattered flags.
+enum ShareRole: Equatable {
+    case unknown                      // not reconciled yet this session
+    case none                         // no share involvement
+    case owner(connected: Bool)       // this device created the share; connected = a partner accepted
+    case participant(connected: Bool) // this device joined a share; connected = shared zone visible
+
+    var isConnected: Bool {
+        switch self {
+        case .owner(let c), .participant(let c): return c
+        case .unknown, .none: return false
+        }
+    }
+}
+
 @MainActor
 class SharingManager: ObservableObject {
 
@@ -40,6 +57,9 @@ class SharingManager: ObservableObject {
     @Published var activeShare: CKShare?
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+
+    // The single source of truth for connection state, set by reconcileState().
+    @Published var role: ShareRole = .unknown
 
     private lazy var container: CKContainer = {
         CKContainer(identifier: kContainerID)
@@ -66,49 +86,6 @@ class SharingManager: ObservableObject {
     private let kCurrentShareVersion = 2
 
     private init() {}
-
-    // ─── Load Existing Share ───────────────────────────────────────────────
-
-    // Call this when PartnerSyncView appears to show current share status.
-    func loadExistingShare() async {
-        isLoading = true
-        defer { isLoading = false }
-
-        // If on an old share version, treat as no share. Loading the broken hierarchy-based
-        // share would show "Invite Sent / Waiting" for an invite that could never work.
-        // The next time the user taps Invite, fetchOrCreateShare() migrates to zone-based.
-        let storedVersion = UserDefaults.standard.integer(forKey: kShareVersionKey)
-        guard storedVersion >= kCurrentShareVersion else {
-            activeShare = nil
-            SyncStateManager.shared.isPartnerConnected = false
-            return
-        }
-
-        guard let savedName = UserDefaults.standard.string(forKey: kShareRecordNameKey) else {
-            activeShare = nil
-            return
-        }
-
-        let recordID = CKRecord.ID(recordName: savedName, zoneID: zone.zoneID)
-
-        do {
-            let record = try await privateDB.record(for: recordID)
-            activeShare = record as? CKShare
-            // Update Phone 1's connection status by checking actual participant acceptance.
-            // Without this, Phone 1 would stay stuck on "Waiting for partner to accept"
-            // even after the partner taps the link and joins.
-            if let share = activeShare {
-                let hasAccepted = share.participants.contains {
-                    $0.role != .owner && $0.acceptanceStatus == .accepted
-                }
-                SyncStateManager.shared.isPartnerConnected = hasAccepted
-            }
-        } catch {
-            // Share was deleted from iCloud (e.g. partner revoked it or iCloud cleanup).
-            activeShare = nil
-            UserDefaults.standard.removeObject(forKey: kShareRecordNameKey)
-        }
-    }
 
     // ─── Create Share & Show Share Sheet ──────────────────────────────────
 
@@ -280,6 +257,7 @@ class SharingManager: ObservableObject {
             SyncStateManager.shared.hasPartnerShare = false
             SyncStateManager.shared.isParticipant = false
             UserDefaults.standard.removeObject(forKey: kShareRecordNameKey)
+            role = .none
         } catch {
             errorMessage = "Could not revoke share: \(error.localizedDescription)"
         }
@@ -299,6 +277,7 @@ class SharingManager: ObservableObject {
         SyncStateManager.shared.deactivatePro()
         UserDefaults.standard.removeObject(forKey: kShareRecordNameKey)
         activeShare = nil
+        role = .none
     }
 
     // ─── Join by Pasted URL (fallback for Mac / dev builds) ──────────────────
@@ -408,10 +387,16 @@ class SharingManager: ObservableObject {
             // it has all-true state flags but fetchChanges() never runs this session,
             // and background pushes only call fetchChanges() which idles on empty zones.
             CloudKitManager.shared.startSyncAfterJoining()
+            role = .participant(connected: zoneReady)
             if zoneReady {
                 smLog("[SharingManager] acceptShare: zone confirmed — sync started")
             } else {
-                smLog("[SharingManager] acceptShare: zone not visible after 45s — sync attempted anyway; fetchSharedChanges() will idle if zone still empty")
+                smLog("[SharingManager] acceptShare: zone not visible after 45s — sync attempted anyway; CloudKitManager.consecutiveEmptyZones will surface error if zone never appears")
+                // Fix Critical 3: give the user visible feedback when zone propagation timed out.
+                // State is NOT rolled back here — doing so permanently breaks Phone 2 (fetchChanges
+                // would loop on empty zones forever). Instead, CloudKitManager's consecutiveEmptyZones
+                // counter surfaces a clear error banner after 3 consecutive empty fetches (~3 min).
+                errorMessage = "Share accepted! Sync may take a few more minutes to connect — tap the Sync Now button if entries don't appear."
             }
 
         } catch {
@@ -420,36 +405,93 @@ class SharingManager: ObservableObject {
         }
     }
 
-    // ─── Restore Participant State After CloudKitManager Reset ─────────────
-
-    // CloudKitManager.fetchSharedChanges() resets isParticipant=false when
-    // allRecordZones() returns empty (e.g. zone still propagating on app launch).
-    // This method re-applies participant state using the durable hasAcceptedShare
-    // sentinel that CloudKitManager never touches.
-    func restoreParticipantStateIfNeeded() async {
-        let accepted = SyncStateManager.shared.hasAcceptedShare
-        smLog("[SharingManager] restoreParticipantStateIfNeeded: hasAcceptedShare=\(accepted) isParticipant=\(SyncStateManager.shared.isParticipant)")
-        guard accepted else { return }
-
-        // Always re-assert Pro + participant access — CloudKitManager may have reset them.
-        SyncStateManager.shared.isParticipant = true
-        SyncStateManager.shared.activatePro()
-
-        let zones = try? await sharedDB.allRecordZones()
-        let zoneCount = zones?.count ?? 0
-        smLog("[SharingManager] restoreParticipantStateIfNeeded: sharedDB zones=\(zoneCount)")
-
-        if zoneCount > 0 {
-            SyncStateManager.shared.isPartnerConnected = true
-            SyncStateManager.shared.hasPartnerShare = true
-            smLog("[SharingManager] restoreParticipantStateIfNeeded: zones visible — full state restored, triggering sync")
-            CloudKitManager.shared.startSyncAfterJoining()
-        } else {
-            // Zones not yet propagated — state is already set above.
-            // Do NOT call startSyncAfterJoining(): fetchSharedChanges() sees
-            // empty zones and calls deactivatePro(), undoing everything.
-            smLog("[SharingManager] restoreParticipantStateIfNeeded: zones not visible yet — isParticipant+isPro restored, sync deferred until next refresh")
+    // ─── Reconcile State — SINGLE SOURCE OF TRUTH ─────────────────────────────
+    //
+    // Asks CloudKit one question — "what is actually true right now?" — and sets ALL
+    // five state flags consistently from that one answer. This replaces the scattered,
+    // partial flag-setting that let the two phones drift apart (owner showing "connected"
+    // while the partner had left).
+    //
+    // Runs AUTOMATICALLY (app launch, foreground, opening Partner Sync) so the paying user
+    // never has to think about it or tap a repair button — sync just self-heals.
+    //
+    // Safety rule: only CLEAR connection flags on POSITIVE confirmation (no stored share,
+    // or CKError.unknownItem). On a transient/offline error we preserve the last-known
+    // state — never wipe on a flaky network (that was the old "partner tab disappears" bug).
+    @discardableResult
+    func reconcileState() async -> ShareRole {
+        // 1) PARTICIPANT (highest precedence): did this device accept a share?
+        if SyncStateManager.shared.hasAcceptedShare {
+            let zones = try? await sharedDB.allRecordZones()
+            if let zones, !zones.isEmpty {
+                SyncStateManager.shared.isParticipant = true
+                SyncStateManager.shared.hasPartnerShare = true
+                SyncStateManager.shared.isPartnerConnected = true
+                SyncStateManager.shared.activatePro()
+                role = .participant(connected: true)
+                smLog("[SharingManager] reconcileState: participant, zone visible → connected")
+                return role
+            }
+            // Accepted but no visible zone: still propagating, owner revoked, or offline.
+            // Keep the durable participant + Pro state; mark connection pending. We never
+            // wipe here — CloudKitManager's 3-strike empty-zone guard handles real revocation.
+            SyncStateManager.shared.isParticipant = true
+            SyncStateManager.shared.activatePro()
+            SyncStateManager.shared.isPartnerConnected = false
+            role = .participant(connected: false)
+            smLog("[SharingManager] reconcileState: participant, zone not visible → pending")
+            return role
         }
+
+        // 2) OWNER: does this device hold a current-version CKShare?
+        let storedVersion = UserDefaults.standard.integer(forKey: kShareVersionKey)
+        if storedVersion >= kCurrentShareVersion,
+           let savedName = UserDefaults.standard.string(forKey: kShareRecordNameKey) {
+            do {
+                let record = try await privateDB.record(
+                    for: CKRecord.ID(recordName: savedName, zoneID: zone.zoneID))
+                if let share = record as? CKShare {
+                    activeShare = share
+                    let connected = share.participants.contains {
+                        $0.role != .owner && $0.acceptanceStatus == .accepted
+                    }
+                    SyncStateManager.shared.hasPartnerShare = true
+                    SyncStateManager.shared.isParticipant = false
+                    SyncStateManager.shared.isPartnerConnected = connected
+                    role = .owner(connected: connected)
+                    smLog("[SharingManager] reconcileState: owner, partnerAccepted=\(connected)")
+                    return role
+                }
+            } catch let ckError as CKError where ckError.code == .unknownItem {
+                // Share genuinely deleted from iCloud → fall through to NONE and clear.
+                UserDefaults.standard.removeObject(forKey: kShareRecordNameKey)
+                smLog("[SharingManager] reconcileState: owner share gone (unknownItem) → none")
+            } catch {
+                // Transient/offline — DO NOT wipe. Report last-known without changing flags.
+                smLog("[SharingManager] reconcileState: transient owner fetch error — preserving state")
+                role = SyncStateManager.shared.hasPartnerShare
+                    ? .owner(connected: SyncStateManager.shared.isPartnerConnected)
+                    : .none
+                return role
+            }
+        }
+
+        // 3) NONE: positively no share involvement. Clear connection flags (never entries).
+        activeShare = nil
+        SyncStateManager.shared.isParticipant = false
+        SyncStateManager.shared.isPartnerConnected = false
+        SyncStateManager.shared.hasPartnerShare = false
+        role = .none
+        smLog("[SharingManager] reconcileState: none")
+        return role
+    }
+
+    // Self-heal recovery: re-derive truth, then force a full re-fetch of all records.
+    // Used automatically after accepting a share, and exposed only in DEBUG builds as a
+    // manual button. Regular users never need this — reconcileState() runs on its own.
+    func reconnectAndRepair() async {
+        await reconcileState()
+        CloudKitManager.shared.forceRefetchAll()
     }
 
     // ─── Private Helpers ───────────────────────────────────────────────────
