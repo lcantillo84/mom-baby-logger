@@ -42,6 +42,7 @@ struct TodayView: View {
 
                     if hasLoggedFeeding {
                         ReminderOptInCard()
+                        WidgetTipCard()
                     }
 
                     if !sync.isPro && !sync.isParticipant && dataStore.entries.count >= 5 {
