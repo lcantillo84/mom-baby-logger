@@ -16,6 +16,14 @@ struct MomBabyLoggerApp: App {
     // The single DataStore for the whole app. @StateObject means SwiftUI owns it.
     @StateObject private var dataStore = DataStore()
 
+    // Observed so the onChange(of: isPro) hook below fires when Pro flips ON
+    // (purchase, Restore Purchase, or the launch entitlement check resolving).
+    @ObservedObject private var syncState = SyncStateManager.shared
+
+    // One-shot: sync must boot at most once per session from the Pro hook —
+    // a lapse+renew mid-session must not stack a second Combine observer.
+    @State private var didBootSyncOnProActivation = false
+
     init() {
         AnalyticsManager.shared.trackAppOpen()
         configureAppearance()
@@ -67,13 +75,6 @@ struct MomBabyLoggerApp: App {
                         UserDefaults.standard.removeObject(forKey: "mommyslog.partnerEntryIDs")
                         UserDefaults.standard.set(true, forKey: "mommyslog.partnerTagsResetV1")
                     }
-                    CloudKitManager.shared.configure(with: dataStore)
-                    WidgetSnapshotWriter.shared.start(observing: dataStore)
-                    SubscriptionManager.shared.startTransactionListener()
-                    Task { await SubscriptionManager.shared.checkCurrentEntitlements() }
-                    // Self-heal share/connection state from CloudKit ground truth on every
-                    // launch. Keeps both phones in agreement with no user action.
-                    Task { await SharingManager.shared.reconcileState() }
                     #if DEBUG
                     // Xcode debug builds use StoreKit sandbox, which can't see App Store
                     // production subscriptions. Auto-activate Pro so all features are
@@ -81,6 +82,17 @@ struct MomBabyLoggerApp: App {
                     // Use "Force Reset State" in Partner Sync debug panel to test free flow.
                     SyncStateManager.shared.activatePro()
                     #endif
+                    CloudKitManager.shared.configure(with: dataStore)
+                    // configure() boots sync itself when isPro is already true at this point,
+                    // so disarm the Pro-activation hook below — a second boot would stack a
+                    // duplicate Combine observer on DataStore.$entries.
+                    if SyncStateManager.shared.isPro { didBootSyncOnProActivation = true }
+                    WidgetSnapshotWriter.shared.start(observing: dataStore)
+                    SubscriptionManager.shared.startTransactionListener()
+                    Task { await SubscriptionManager.shared.checkCurrentEntitlements() }
+                    // Self-heal share/connection state from CloudKit ground truth on every
+                    // launch. Keeps both phones in agreement with no user action.
+                    Task { await SharingManager.shared.reconcileState() }
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     // On foreground: first re-derive the true connection state, then pull any
@@ -97,6 +109,23 @@ struct MomBabyLoggerApp: App {
                             await CloudKitManager.shared.fetchOnForeground()
                         }
                     }
+                }
+                .onChange(of: syncState.isPro) { _, isNowPro in
+                    // PRODUCTION-ONLY GAP THIS CLOSES: at cold start, configure() reads isPro
+                    // BEFORE StoreKit's checkCurrentEntitlements() resolves, so a paying OWNER
+                    // whose isPro flag wasn't already persisted (fresh install, or first launch
+                    // after subscribing) never booted sync at all — no uploads, no fetches, no
+                    // 60s timer, no push subscription. Debug builds masked this because the
+                    // auto-activatePro above runs synchronously before configure(). This hook
+                    // boots sync the moment Pro actually turns ON (launch entitlement check,
+                    // purchase, or Restore Purchase). Participants are excluded: configure() /
+                    // acceptShare() boot them via their own path, and both set isParticipant /
+                    // hasAcceptedShare BEFORE calling activatePro(), so this guard is reliable.
+                    guard isNowPro, !didBootSyncOnProActivation,
+                          !syncState.isParticipant, !SyncStateManager.shared.hasAcceptedShare
+                    else { return }
+                    didBootSyncOnProActivation = true
+                    CloudKitManager.shared.activateSync(with: dataStore)
                 }
         }
     }
