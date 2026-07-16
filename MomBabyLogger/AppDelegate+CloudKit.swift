@@ -26,8 +26,11 @@ extension AppDelegate {
                      didReceiveRemoteNotification userInfo: [AnyHashable: Any],
                      fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         Task { @MainActor in
-            await CloudKitManager.shared.fetchChanges()
-            completionHandler(.newData)
+            // v2 engine: hand the push to the SyncCoordinator (via the facade),
+            // which nudges CKSyncEngine to fetch. Engine-managed pushes replaced
+            // the old manual zone/database subscriptions.
+            let consumed = CloudKitManager.shared.handleRemoteNotification(userInfo)
+            completionHandler(consumed ? .newData : .noData)
         }
     }
 

@@ -89,6 +89,7 @@ struct InsightsView: View {
         ScrollView {
             VStack(spacing: AppTheme.Spacing.lg) {
 
+                doctorReportLink
                 feedingChartCard
                 diaperChartCard
 
@@ -99,6 +100,43 @@ struct InsightsView: View {
             .padding(.top, AppTheme.Spacing.md)
         }
         .background(AppTheme.Colors.appBackground.ignoresSafeArea())
+    }
+
+    // MARK: - Doctor Visit Report Link (Pro)
+
+    private var doctorReportLink: some View {
+        NavigationLink {
+            PediatricianReportView()
+                .environmentObject(dataStore)
+        } label: {
+            HStack(spacing: AppTheme.Spacing.md) {
+                Image(systemName: "stethoscope")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.primaryAction)
+                    .frame(width: 40, height: 40)
+                    .background(AppTheme.Colors.primaryAction.opacity(0.12))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Doctor Visit Report")
+                        .font(AppTheme.Typography.sectionHeader)
+                        .foregroundColor(AppTheme.Colors.primaryText)
+                    Text("Feeds, ounces & diapers — ready to share at your checkup")
+                        .font(AppTheme.Typography.labelSmall)
+                        .foregroundColor(AppTheme.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.tertiaryText)
+            }
+            .padding(AppTheme.Spacing.md)
+            .background(AppTheme.Colors.cardBackground)
+            .cornerRadius(AppTheme.Radius.card)
+            .modifier(CardShadow())
+            .padding(.horizontal)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Feeding Chart Card
@@ -345,7 +383,7 @@ struct InsightsView: View {
             Text("Insights is a Pro feature")
                 .font(AppTheme.Typography.titleMedium)
                 .foregroundColor(AppTheme.Colors.primaryText)
-            Text("Upgrade to see 7-day feeding and diaper charts, daily averages, and more.")
+            Text("Upgrade to see feeding and diaper charts, daily averages, and a one-tap Doctor Visit Report to share at checkups.")
                 .font(AppTheme.Typography.bodyMedium)
                 .foregroundColor(AppTheme.Colors.secondaryText)
                 .multilineTextAlignment(.center)

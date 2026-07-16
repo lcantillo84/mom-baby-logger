@@ -10,6 +10,13 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var dataStore: DataStore
 
+    // Baby profile — OPTIONAL and PRIVATE BY DESIGN: stored only in this device's
+    // UserDefaults. Deliberately NOT synced via CloudKit/Partner Sync and never
+    // uploaded anywhere — it only appears on Doctor Visit Reports the parent
+    // chooses to share. 0 birthday = not set.
+    @AppStorage("mommyslog.babyName") private var babyName: String = ""
+    @AppStorage("mommyslog.babyBirthday") private var babyBirthdayInterval: Double = 0
+
     @State private var showingDeleteConfirmation = false
     @State private var deleteTimeframe: DeleteTimeframe = .all
     @State private var showingExportView = false
@@ -26,6 +33,44 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Baby Profile Section — optional, on-device only (see @AppStorage note above)
+                Section(
+                    header: Text("Baby (Optional)"),
+                    footer: Text("Shown on your Doctor Visit Report. Stored only on this phone — never uploaded, synced, or shared unless you share a report.")
+                ) {
+                    HStack {
+                        Image(systemName: "heart.fill")
+                            .foregroundColor(AppTheme.Colors.primaryAction)
+                        TextField("Baby's name", text: $babyName)
+                    }
+                    if babyBirthdayInterval > 0 {
+                        DatePicker(
+                            "Birthday",
+                            selection: Binding(
+                                get: { Date(timeIntervalSince1970: babyBirthdayInterval) },
+                                set: { babyBirthdayInterval = $0.timeIntervalSince1970 }
+                            ),
+                            in: ...Date(),
+                            displayedComponents: .date
+                        )
+                        Button("Remove Birthday", role: .destructive) {
+                            babyBirthdayInterval = 0
+                        }
+                        .font(.caption)
+                    } else {
+                        Button {
+                            // Default to today; parent adjusts in the picker that appears.
+                            babyBirthdayInterval = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
+                        } label: {
+                            HStack {
+                                Image(systemName: "calendar.badge.plus")
+                                    .foregroundColor(AppTheme.Colors.primaryAction)
+                                Text("Add Birthday (shows age on report)")
+                            }
+                        }
+                    }
+                }
+
                 // Reminders Section
                 Section(header: Text("Reminders")) {
                     NavigationLink(destination: ReminderSettingsView()) {
@@ -120,6 +165,14 @@ struct SettingsView: View {
 
                 Section {
                     Text("This app helps you track your baby's feeding and diaper changes. All data is stored securely on your device.")
+                        .font(.caption)
+                        .foregroundColor(AppTheme.Colors.secondaryText)
+                }
+
+                // App-wide medical disclaimer — the one place that covers every
+                // feature (logs, insights, predictions, reports, reminders).
+                Section(header: Text("Medical Disclaimer")) {
+                    Text("Mommy's Log is a personal record-keeping tool, not a medical device. All entries, statistics, charts, predictions, reminders, and reports are based on data you enter manually, may contain errors or omissions, and do not constitute medical advice, diagnosis, or treatment. Never use this app as a substitute for professional medical care — always consult your pediatrician or a qualified healthcare provider with any questions about your baby's health, feeding, or development. If you believe your baby has a medical emergency, call your doctor or emergency services immediately.")
                         .font(.caption)
                         .foregroundColor(AppTheme.Colors.secondaryText)
                 }

@@ -25,9 +25,12 @@ import UIKit
 // Compiles out completely in App Store / Release builds.
 // To re-enable in Release: change `#if DEBUG` to `if true`.
 private func smLog(_ message: String) {
-    #if DEBUG
-    print(message)
-    #endif
+    // TEMPORARY (2026-07-07): logging is forced ON in Release to diagnose the production
+    // B→A sync failure on real App Store phones (owner not receiving participant's logs).
+    // Revert `if true` back to `#if DEBUG` / `#endif` once two-phone sync is confirmed fixed.
+    if true {
+        print(message)
+    }
 }
 
 // Single, authoritative description of this device's role in the share.
