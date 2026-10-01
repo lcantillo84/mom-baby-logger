@@ -31,7 +31,9 @@ import Observation
 enum ProPlan: String, CaseIterable, Identifiable {
     case lifetime = "lilycantilloapp.mommysblog.pro.lifetime"
     case yearly   = "lilycantilloapp.mommysblog.pro.yearly"    // legacy — not offered
-    case monthly  = "lilycantilloapp.mommysblog.pro.monthly"   // legacy — not offered
+    // legacy — not offered. This is the REAL App Store Connect ID of the original
+    // monthly subscription (1.6.0–1.7.1 asked for ".pro.monthly", which never existed).
+    case monthly  = "lilycantilloapp.mommysblog.subscription.pro"
 
     var id: String { rawValue }
 
