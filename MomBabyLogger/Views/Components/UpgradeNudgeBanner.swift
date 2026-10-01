@@ -36,11 +36,11 @@ struct UpgradeNudgeBanner: View {
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("You're on a roll — try Pro free")
+                        Text("You're on a roll — unlock Pro")
                             .font(AppTheme.Typography.bodyMedium)
                             .fontWeight(.semibold)
                             .foregroundColor(AppTheme.Colors.primaryText)
-                        Text("AI predictions, partner sync & charts — 7 days free")
+                        Text("Partner sync, AI predictions & charts — pay once, yours forever")
                             .font(AppTheme.Typography.labelSmall)
                             .foregroundColor(AppTheme.Colors.secondaryText)
                     }

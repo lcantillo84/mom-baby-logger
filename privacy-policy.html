@@ -12,27 +12,28 @@
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f9f9f9;
+            background-color: #FFF9F4;
         }
         h1 {
-            color: #FAC2CC;
-            border-bottom: 3px solid #F2A6B8;
+            color: #3D7A72;
+            border-bottom: 3px solid #5BA89F;
             padding-bottom: 10px;
         }
         h2 {
-            color: #F2A6B8;
+            color: #3D7A72;
             margin-top: 30px;
         }
+        a { color: #3D7A72; }
         .container {
-            background: white;
+            background: #FFFCF9;
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
         }
         .highlight {
-            background-color: #FFF5F7;
+            background-color: #EEF6F4;
             padding: 15px;
-            border-left: 4px solid #FAC2CC;
+            border-left: 4px solid #5BA89F;
             margin: 20px 0;
         }
         .date {
@@ -44,33 +45,39 @@
 <body>
     <div class="container">
         <h1>Privacy Policy for Mommy's Log</h1>
-        <p class="date">Last Updated: April 29, 2026</p>
+        <p class="date">Last Updated: October 1, 2026</p>
 
         <div class="highlight">
-            <strong>Your Privacy Matters:</strong> Mommy's Log is designed with your privacy as the top priority. We — the developer — never collect, access, see, or store any of your data. Ever. Free users: all data stays entirely on your device. Pro users: data syncs through <em>your own</em> iCloud account — only you and people you explicitly invite can access it.
+            <strong>Your Privacy Matters:</strong> Mommy's Log is designed with your privacy as the top priority. We, the developer, never collect, access, see, or store any of your data. Free users: all data stays on your device. Pro users: data syncs through <em>your own</em> iCloud account, and only you and the people you share your invite link with can access it.
         </div>
 
         <h2>Information Collection and Use</h2>
         <p>
-            Mommy's Log does <strong>NOT</strong> collect, store, or transmit any personal information to the developer or any third-party server. The developer has <strong>zero access</strong> to your data at all times.
+            Mommy's Log does <strong>NOT</strong> collect, store, or transmit any personal information to the developer or to any third-party server. The developer has <strong>zero access</strong> to your data at all times.
         </p>
         <ul>
             <li><strong>Free users:</strong> all data is stored locally on your device only.</li>
-            <li><strong>Pro users:</strong> data optionally syncs to your own personal iCloud account via Apple's CloudKit. It goes from your device to Apple's servers — not to us. The developer cannot read, access, or retrieve this data under any circumstances.</li>
+            <li><strong>Pro users:</strong> data can sync to your own personal iCloud account through Apple's CloudKit. It goes from your device to Apple's servers, not to us. The developer cannot read, access, or retrieve this data under any circumstances.</li>
         </ul>
 
         <h2>Data Storage</h2>
         <p>
-            All information you log in Mommy's Log, including:
+            Everything you enter in Mommy's Log is stored on your iPhone using Apple's secure local storage. That includes:
         </p>
         <ul>
             <li>Feeding records (breast, bottle, formula)</li>
             <li>Diaper change logs</li>
             <li>Notes and timestamps</li>
-            <li>Any other activity data</li>
+            <li>Your baby's name and birthday, if you choose to enter them (optional)</li>
+            <li>Your reminder settings</li>
         </ul>
         <p>
-            is stored on your iPhone using Apple's secure local storage. For Pro subscribers who enable Partner Sync, this data is also synced to your personal iCloud account (Apple's servers) so your invited partner can access it. In both cases, the developer has no access to this data.
+            For Pro users who use Partner Sync, your logs are also synced to your personal iCloud account (Apple's servers) so your partner can access them. In both cases, the developer has no access to this data. If you use iPhone/iCloud Backup, Apple may include the app's data in your normal device backup, just as it does for other apps.
+        </p>
+
+        <h2>Purchases</h2>
+        <p>
+            Mommy's Log is free to download. Pro features can be unlocked with a <strong>one-time in-app purchase</strong>. It is not a subscription and you are not charged again. All payments are processed by Apple through the App Store. We never receive or see your payment details, name, email, or Apple ID. Apple only confirms to the app whether Pro has been unlocked, so it can restore your purchase on your other devices. If you bought an earlier subscription, Apple manages it, and you can view or cancel it in your Apple ID settings.
         </p>
 
         <h2>Data Sharing</h2>
@@ -79,100 +86,122 @@
         </p>
         <ul>
             <li>Collect any personal information</li>
-            <li>Track your usage or behavior</li>
-            <li>Use analytics or tracking services</li>
+            <li>Track your usage or behavior across apps or websites</li>
+            <li>Use third-party analytics, advertising, or tracking services</li>
             <li>Share data with third parties</li>
             <li>Sell or rent your information</li>
             <li>Use cookies or similar technologies</li>
             <li>Require account creation or login</li>
         </ul>
+        <p>
+            The app keeps a few simple counters (for example, how many entries you have logged) on your device. They help decide when to show a feature tip or a rating request. These counters never leave your device.
+        </p>
+
+        <h2>On-Device Features</h2>
+        <ul>
+            <li><strong>Feeding predictions and insights:</strong> calculated entirely on your device. No data is sent to any AI service or server.</li>
+            <li><strong>Feeding reminders:</strong> local notifications scheduled on your device. No notification server is involved.</li>
+            <li><strong>Home Screen widget:</strong> shows the time since the last feeding, using data shared only between the app and its widget on your device.</li>
+        </ul>
 
         <h2>Data Export</h2>
         <p>
-            Mommy's Log includes an optional export feature that allows you to copy your data to your device's clipboard in CSV or text format. You have complete control over where this exported data goes - you can paste it into email, messaging apps, or any other app of your choice. This export is entirely manual and only happens when you explicitly choose to use it.
+            Mommy's Log lets you export your data when you choose to:
+        </p>
+        <ul>
+            <li><strong>CSV or text:</strong> copied to your device's clipboard, so you can paste it wherever you like.</li>
+            <li><strong>Doctor Visit Report (Pro):</strong> a summary image or PDF that you can share using Apple's share sheet (Messages, Mail, Files, print, and so on).</li>
+        </ul>
+        <p>
+            Exports happen only when you tap them, and you decide where the exported data goes.
         </p>
 
         <h2>Data Deletion</h2>
         <p>
-            You have full control over your data. You can delete individual entries or all data at any time through the app's Settings. When you delete data from the app, it is permanently removed from your device. If you uninstall the app, all data stored by the app is automatically deleted from your device.
+            You have full control over your data. You can delete single entries or all data at any time in the app.
         </p>
+        <ul>
+            <li><strong>Free users:</strong> deleted data is permanently removed from your device. Uninstalling the app removes all of its data from your device.</li>
+            <li><strong>Pro users with Partner Sync:</strong> deleting an entry also deletes it from your iCloud and from your partner's device. Uninstalling the app does <em>not</em> delete data already stored in your iCloud. To remove it, delete your entries in the app before uninstalling, or manage your iCloud storage in your iPhone's Settings (Settings → [your name] → iCloud).</li>
+        </ul>
 
         <h2>Children's Privacy</h2>
         <p>
-            While Mommy's Log is used to track information about babies and children, the app itself does not collect any information from anyone, including children under 13. All data remains on the parent's device.
+            Mommy's Log is used by parents and caregivers to track information about their baby. The app does not collect information from anyone, including children under 13. All data stays on the parent's device and, for Pro users, in the parent's own iCloud account.
         </p>
 
         <h2>Security</h2>
         <p>
-            Since all data is stored locally on your device, the security of your data depends on your device's security measures (passcode, Face ID, Touch ID, etc.). We recommend keeping your device secure and updated with the latest iOS version.
+            Data on your device is protected by your device's security (passcode, Face ID, Touch ID). Data synced through iCloud is protected and encrypted by Apple. We recommend keeping your device secure and up to date with the latest iOS version.
         </p>
 
-        <h2>iCloud Sync (Pro Feature)</h2>
+        <h2>iCloud Partner Sync (Pro Feature)</h2>
         <p>
-            Mommy's Log Pro subscribers can optionally enable Partner Sync, which uses Apple's iCloud (CloudKit) to share baby logs in real time with a partner or nanny. When this feature is enabled:
+            Pro users can share baby logs in real time with a partner, nanny, or other caregiver through Apple's iCloud (CloudKit). When you use this feature:
         </p>
         <ul>
-            <li>Data syncs exclusively through <strong>your personal iCloud account</strong> — not through any developer server</li>
-            <li>The developer has <strong>no access to your iCloud data</strong> — it is technically impossible for us to read it</li>
-            <li>Data is shared only with people you explicitly invite via Apple's share sheet</li>
-            <li>Only you and your invited partner can access the shared data</li>
-            <li>Apple's iCloud infrastructure handles all data transmission and encryption</li>
-            <li>You can revoke access or disable sync at any time in Settings</li>
+            <li>Data syncs only through <strong>your personal iCloud account</strong>, never through a developer server.</li>
+            <li>The developer has <strong>no access to your iCloud data</strong>. It is technically impossible for us to read it.</li>
+            <li>You share access by sending an invite link. <strong>Anyone who has your invite link can join your shared log</strong>, see your entries, and add entries. Treat the link like a key and send it only to people you trust.</li>
+            <li>Everyone who joins can view and add entries, and their changes sync to everyone in the shared log.</li>
+            <li>You can disconnect your partner at any time in Partner Sync. That stops their access to new entries. Entries already on their device stay on their device.</li>
+            <li>A partner can leave the shared log at any time.</li>
+            <li>Apple's iCloud infrastructure handles all data transmission and encryption.</li>
             <li>Apple's privacy policy governs iCloud data: <a href="https://www.apple.com/legal/privacy/">https://www.apple.com/legal/privacy/</a></li>
         </ul>
         <p>
-            Users who do not subscribe to Pro are not affected — their data remains stored locally on their device only and never touches iCloud.
+            Free users are not affected. Their logs stay on their device and are never synced to iCloud by the app.
         </p>
 
         <h2>Third-Party Services</h2>
         <p>
-            Mommy's Log does not use any third-party analytics, advertising networks, or tracking services. The free version of the app operates entirely offline. The Pro version uses Apple's iCloud (CloudKit) exclusively for the optional Partner Sync feature described above.
+            Mommy's Log does not use any third-party analytics, advertising networks, or tracking services, and does not connect to any developer server. The only outside services involved are Apple's: the App Store for purchases, and iCloud (CloudKit) for the optional Pro Partner Sync.
         </p>
 
-        <h2>Location and Health Data</h2>
+        <h2>Location and Device Permissions</h2>
         <p>
-            Mommy's Log does not access, collect, or use any device location data, health data, contacts, photos, camera, microphone, or any other sensitive device permissions beyond basic app functionality.
+            Mommy's Log does not access or use your location, Apple Health data, contacts, photos, camera, or microphone. The only permission the app may ask for is notifications, used for optional feeding reminders.
         </p>
 
         <h2>International Users</h2>
         <p>
-            Free users: all data stays on your device — no international data transfer occurs. Pro users who enable Partner Sync: data is handled by Apple's iCloud infrastructure and subject to Apple's data residency policies. The developer does not control or access this data transfer in any way.
+            Free users: all data stays on your device, so no international data transfer takes place. Pro users who use Partner Sync: data is handled by Apple's iCloud infrastructure and follows Apple's data residency policies. The developer does not control or access this transfer in any way.
         </p>
 
         <h2>User Rights</h2>
         <p>
-            As the user, you have complete control and ownership of your data. You may:
+            You have complete control and ownership of your data. You can:
         </p>
         <ul>
             <li>View all data stored in the app at any time</li>
-            <li>Export your data in standard formats (CSV or text)</li>
-            <li>Delete any or all data at your discretion</li>
-            <li>Uninstall the app, which will permanently remove all data</li>
+            <li>Export your data in standard formats (CSV, text, or PDF report)</li>
+            <li>Delete any or all of your data whenever you want</li>
+            <li>Stop sharing, or leave a shared log, at any time</li>
         </ul>
 
         <h2>Medical Disclaimer</h2>
         <p>
-            Mommy's Log is a personal tracking tool only and is not intended to provide medical advice, diagnosis, or treatment. Always consult with qualified healthcare providers regarding your baby's health and development. The app should not replace professional medical record-keeping or advice.
+            Mommy's Log is a personal tracking tool only. It does not provide medical advice, diagnosis, or treatment. Feeding predictions and insights are estimates based on your own logs, not medical guidance. Always talk to a qualified healthcare provider about your baby's health and development.
         </p>
 
         <h2>Limitation of Liability</h2>
         <p>
-            Mommy's Log is provided "as is" without warranties of any kind, express or implied. The developer shall not be liable for any data loss, damages, or consequences arising from the use of this app. Users are responsible for backing up their data if desired using the export feature. This app is not a substitute for professional medical advice or record-keeping required by healthcare providers.
+            Mommy's Log is provided "as is" without warranties of any kind, express or implied. The developer is not liable for any data loss, damages, or consequences that come from using this app. You are responsible for backing up your data, if you want a backup, using the export feature or iCloud. This app does not replace professional medical advice or the records healthcare providers are required to keep.
         </p>
 
         <h2>Changes to This Privacy Policy</h2>
         <p>
-            We may update this Privacy Policy from time to time to reflect changes in our practices or for legal, operational, or regulatory reasons. Any changes will be posted on this page with an updated "Last Updated" date at the top of this policy. Your continued use of the app after any changes constitutes acceptance of the updated Privacy Policy. We encourage you to review this Privacy Policy periodically.
+            We may update this Privacy Policy from time to time to reflect changes to the app or for legal or regulatory reasons. Any changes will be posted on this page with a new "Last Updated" date at the top. If you keep using the app after a change, that means you accept the updated policy.
         </p>
 
         <h2>Governing Law</h2>
         <p>
-            This Privacy Policy and your use of Mommy's Log shall be governed by and construed in accordance with the laws of the United States, without regard to conflict of law principles. Any disputes arising from this policy or the app shall be resolved in accordance with applicable law.
+            This Privacy Policy and your use of Mommy's Log are governed by the laws of the United States, without regard to conflict of law principles.
         </p>
 
         <h2>Contact Us</h2>
         <p>
-            If you have any questions, concerns, or requests regarding this Privacy Policy or your data, please contact us at:
+            If you have any questions, concerns, or requests about this Privacy Policy or your data, please contact us at:
         </p>
         <p>
             <strong>Email:</strong> lilianne.cantillo@gmail.com<br>
@@ -180,7 +209,7 @@
             <strong>App:</strong> Mommy's Log
         </p>
         <p>
-            We will respond to privacy-related inquiries within a reasonable timeframe.
+            We will reply to privacy questions within a reasonable time.
         </p>
 
         <hr style="margin: 40px 0; border: none; border-top: 1px solid #eee;">

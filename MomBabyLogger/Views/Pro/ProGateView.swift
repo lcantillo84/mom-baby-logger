@@ -10,18 +10,34 @@
 //
 // It shows:
 //  • What they get by upgrading (the value proposition)
-//  • A big "Upgrade to Pro" button
+//  • ONE price: a one-time Lifetime Unlock ($14.99)
+//  • A big "Unlock Forever" button (real StoreKit purchase)
 //  • A "Restore Purchase" link for people who already paid
-//
-// When the user taps Upgrade, this will trigger StoreKit to show
-// the purchase sheet (StoreKit integration will come in Session 5).
-// For now the button sets isPro = true directly so you can test
-// the rest of the flow.
 // ─────────────────────────────────────────────────────────────
 
 import SwiftUI
 import StoreKit
 import Observation
+
+// ─────────────────────────────────────────────────────────────
+// Plan — product IDs that grant Pro.
+//
+// 2026-09-25: the paywall sells ONE thing — the Lifetime unlock.
+// Baby tracking is a FINITE need (roughly 12–18 months), so a
+// subscription is the wrong fit. Monthly/Yearly are no longer
+// OFFERED, but they stay in this enum so anyone who already bought
+// them is still recognized by applyEntitlementState() / restore().
+// ─────────────────────────────────────────────────────────────
+enum ProPlan: String, CaseIterable, Identifiable {
+    case lifetime = "lilycantilloapp.mommysblog.pro.lifetime"
+    case yearly   = "lilycantilloapp.mommysblog.pro.yearly"    // legacy — not offered
+    case monthly  = "lilycantilloapp.mommysblog.pro.monthly"   // legacy — not offered
+
+    var id: String { rawValue }
+
+    /// Shown only if the real App Store price can't load. Keep in sync with ASC.
+    static let lifetimeFallbackPrice = "$14.99"
+}
 
 // ─────────────────────────────────────────────────────────────
 // SubscriptionManager — handles all real App Store payments.
@@ -32,27 +48,50 @@ import Observation
 class SubscriptionManager {
 
     static let shared = SubscriptionManager()
-    private let productID = "lilycantilloapp.mommysblog.pro.monthly"
+    private let productIDs = Set(ProPlan.allCases.map(\.rawValue))
 
-    var product: Product?
+    /// Loaded App Store products, keyed by product ID.
+    var products: [String: Product] = [:]
+    var isLoadingProducts: Bool = false
     var isPurchasing: Bool = false
     var errorMessage: String?
 
     private var transactionListenerTask: Task<Void, Never>?
     private init() {}
 
-    func loadProduct() async {
+    func product(for plan: ProPlan) -> Product? { products[plan.rawValue] }
+
+    /// True when Pro was unlocked by joining a partner's share rather than by
+    /// paying. Never revoke Pro from those users based on StoreKit — they have
+    /// no transaction of their own and never will.
+    private var isPartnerGrantedPro: Bool {
+        SyncStateManager.shared.isParticipant || SyncStateManager.shared.hasAcceptedShare
+    }
+
+    func loadProducts() async {
+        isLoadingProducts = true
+        defer { isLoadingProducts = false }
         do {
-            let products = try await Product.products(for: [productID])
-            product = products.first
+            let loaded = try await Product.products(for: productIDs)
+            products = Dictionary(uniqueKeysWithValues: loaded.map { ($0.id, $0) })
+            errorMessage = nil
         } catch {
-            errorMessage = "Could not load subscription details. Check your internet connection."
+            errorMessage = "Could not load pricing. Check your internet connection."
         }
     }
 
-    func purchase() async -> Bool {
-        guard let product else {
-            errorMessage = "Product not loaded yet. Please try again."
+    func purchase(_ plan: ProPlan) async -> Bool {
+        // Hard lock: the app sells ONLY the one-time Lifetime unlock. Subscriptions
+        // can never be started from this build, even if a caller passes one by mistake.
+        guard plan == .lifetime else { return false }
+
+        // The product may not have loaded yet (slow network, first launch) —
+        // try once more before telling the user anything failed.
+        if product(for: plan) == nil {
+            await loadProducts()
+        }
+        guard let product = product(for: plan) else {
+            errorMessage = "The App Store isn't responding right now. Please try again in a minute."
             return false
         }
         isPurchasing = true
@@ -84,30 +123,17 @@ class SubscriptionManager {
         isPurchasing = true
         defer { isPurchasing = false }
         errorMessage = nil
-        var restored = false
-        for await result in Transaction.currentEntitlements {
-            if case .verified(let transaction) = result,
-               transaction.productID == productID,
-               transaction.revocationDate == nil {
-                SyncStateManager.shared.activatePro()
-                restored = true
-                break
-            }
-        }
+
+        var restored = await hasValidEntitlement()
         if !restored {
             try? await AppStore.sync()
-            for await result in Transaction.currentEntitlements {
-                if case .verified(let transaction) = result,
-                   transaction.productID == productID,
-                   transaction.revocationDate == nil {
-                    SyncStateManager.shared.activatePro()
-                    restored = true
-                    break
-                }
-            }
+            restored = await hasValidEntitlement()
         }
-        if !restored {
-            errorMessage = "No active subscription found for this Apple ID."
+
+        if restored {
+            SyncStateManager.shared.activatePro()
+        } else {
+            errorMessage = "No previous purchase found for this Apple ID."
         }
     }
 
@@ -116,16 +142,12 @@ class SubscriptionManager {
         transactionListenerTask = Task(priority: .background) {
             for await result in Transaction.updates {
                 guard case .verified(let transaction) = result,
-                      transaction.productID == self.productID
+                      self.productIDs.contains(transaction.productID)
                 else { continue }
-                if transaction.revocationDate != nil {
-                    SyncStateManager.shared.deactivatePro()
-                } else if let expiration = transaction.expirationDate, expiration < Date() {
-                    SyncStateManager.shared.deactivatePro()
-                } else {
-                    SyncStateManager.shared.activatePro()
-                }
                 await transaction.finish()
+                // Re-evaluate ALL entitlements rather than trusting this one
+                // transaction: a lapsed monthly must not revoke a Lifetime unlock.
+                await self.applyEntitlementState()
             }
         }
     }
@@ -133,21 +155,50 @@ class SubscriptionManager {
     // Called once on every app launch to silently restore Pro for users
     // who reinstalled, switched phones, or whose subscription renewed overnight.
     func checkCurrentEntitlements() async {
+        await applyEntitlementState()
+    }
+
+    /// Scans every current entitlement across all three products and decides
+    /// Pro state ONCE. Any single valid purchase grants Pro.
+    private func applyEntitlementState() async {
+        var sawOurTransaction = false
+        var entitled = false
+
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result,
-                  transaction.productID == productID,
+                  productIDs.contains(transaction.productID)
+            else { continue }
+            sawOurTransaction = true
+
+            let isRevoked = transaction.revocationDate != nil
+            // Non-consumables (Lifetime) have no expirationDate — never expire.
+            let isExpired = transaction.expirationDate.map { $0 < Date() } ?? false
+            if !isRevoked && !isExpired {
+                entitled = true
+                break
+            }
+        }
+
+        if entitled {
+            SyncStateManager.shared.activatePro()
+        } else if sawOurTransaction && !isPartnerGrantedPro {
+            // Only revoke on POSITIVE evidence of a dead purchase. If the store
+            // returned nothing at all (offline, slow first launch) leave state
+            // alone so Pro doesn't flicker off for a paying user.
+            SyncStateManager.shared.deactivatePro()
+        }
+    }
+
+    private func hasValidEntitlement() async -> Bool {
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result,
+                  productIDs.contains(transaction.productID),
                   transaction.revocationDate == nil
             else { continue }
             let isExpired = transaction.expirationDate.map { $0 < Date() } ?? false
-            if isExpired {
-                SyncStateManager.shared.deactivatePro()
-            } else {
-                SyncStateManager.shared.activatePro()
-            }
-            return
+            if !isExpired { return true }
         }
-        // No active entitlement found — only deactivate if they weren't already marked Pro
-        // (avoids flickering on first launch before store responds)
+        return false
     }
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
@@ -171,6 +222,9 @@ struct ProGateView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var errorMessage: String?
+
+    // The only plan the paywall sells.
+    private let offeredPlan: ProPlan = .lifetime
 
     // The features list — easy to update without touching layout code.
     private let features: [(icon: String, title: String, detail: String)] = [
@@ -276,20 +330,45 @@ struct ProGateView: View {
     }
 
     private var pricingSection: some View {
-        VStack(spacing: 8) {
-            // Show the real App Store price when loaded, fallback to hardcoded price
-            Text(subscriptions.product.map { "\($0.displayPrice) / month" } ?? "$2.99 / month")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.primaryText)
-            Text("Cancel anytime • 7-day free trial")
-                .font(AppTheme.Typography.labelSmall)
-                .foregroundColor(AppTheme.Colors.tertiaryText)
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Lifetime Unlock")
+                    .font(AppTheme.Typography.bodyLarge)
+                    .fontWeight(.semibold)
+                    .foregroundColor(AppTheme.Colors.primaryText)
+                Text("One payment. Yours for every baby.")
+                    .font(AppTheme.Typography.labelSmall)
+                    .foregroundColor(AppTheme.Colors.secondaryText)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
+                if let product = subscriptions.product(for: offeredPlan) {
+                    Text(product.displayPrice)
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.primaryText)
+                } else if subscriptions.isLoadingProducts {
+                    ProgressView()
+                } else {
+                    Text(ProPlan.lifetimeFallbackPrice)
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.primaryText)
+                }
+                Text("one time")
+                    .font(AppTheme.Typography.labelSmall)
+                    .foregroundColor(AppTheme.Colors.tertiaryText)
+            }
         }
-        .padding(20)
+        .padding(16)
         .frame(maxWidth: .infinity)
-        .background(AppTheme.Colors.primaryAction.opacity(0.06))
+        .background(AppTheme.Colors.primaryAction.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.card))
-        .task { await subscriptions.loadProduct() }
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.card)
+                .stroke(AppTheme.Colors.primaryAction, lineWidth: 2)
+        )
+        .task { await subscriptions.loadProducts() }
     }
 
     private var actionsSection: some View {
@@ -303,19 +382,24 @@ struct ProGateView: View {
 
             Button {
                 Task {
-                    let success = await subscriptions.purchase()
+                    let success = await subscriptions.purchase(offeredPlan)
                     if success { dismiss() }
                 }
             } label: {
-                if subscriptions.isPurchasing {
+                if subscriptions.isPurchasing || subscriptions.isLoadingProducts {
                     ProgressView()
                         .tint(.white)
                 } else {
-                    Text("Start Free Trial")
+                    Text("Unlock Forever")
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(subscriptions.isPurchasing)
+            .disabled(subscriptions.isPurchasing || subscriptions.isLoadingProducts)
+
+            Text("One payment · no subscription · restores on all your devices")
+                .font(AppTheme.Typography.labelSmall)
+                .foregroundColor(AppTheme.Colors.tertiaryText)
+                .multilineTextAlignment(.center)
 
             Button {
                 Task {
