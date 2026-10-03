@@ -112,10 +112,6 @@ struct ProInsightsSection: View {
                 lockedRow(icon: "lock.fill",     iconColor: AppTheme.Colors.primaryAction,
                           title: "Unlock Pro Insights",
                           detail: "Time since last feeding, trends & averages",
-                          showDivider: true)
-                lockedRow(icon: "brain",          iconColor: AppTheme.Colors.primaryAction,
-                          title: "AI Patterns",
-                          detail: "Feeding predictions and anomaly alerts",
                           showDivider: false)
 
                 HStack {

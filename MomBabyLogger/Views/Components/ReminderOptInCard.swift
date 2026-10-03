@@ -48,11 +48,11 @@ struct ReminderOptInCard: View {
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Never miss a feeding")
+                        Text("Feeding reminders")
                             .font(AppTheme.Typography.bodyMedium)
                             .fontWeight(.semibold)
                             .foregroundColor(AppTheme.Colors.primaryText)
-                        Text("Get a gentle reminder when the next feeding is due")
+                        Text("Get a gentle reminder for the next feeding")
                             .font(AppTheme.Typography.labelSmall)
                             .foregroundColor(AppTheme.Colors.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)

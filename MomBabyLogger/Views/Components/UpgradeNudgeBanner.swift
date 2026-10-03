@@ -40,7 +40,7 @@ struct UpgradeNudgeBanner: View {
                             .font(AppTheme.Typography.bodyMedium)
                             .fontWeight(.semibold)
                             .foregroundColor(AppTheme.Colors.primaryText)
-                        Text("Partner sync, AI predictions & charts — pay once, yours forever")
+                        Text("Partner sync, charts & Doctor Visit Report — pay once, yours forever")
                             .font(AppTheme.Typography.labelSmall)
                             .foregroundColor(AppTheme.Colors.secondaryText)
                     }

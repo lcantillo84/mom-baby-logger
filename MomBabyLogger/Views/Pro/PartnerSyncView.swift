@@ -485,7 +485,7 @@ struct PartnerSyncView: View {
     private var howItWorksContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             stepRow(number: "1", text: "Tap **Invite Partner** — iOS opens a share sheet")
-            stepRow(number: "2", text: "Send the link via iMessage or any app")
+            stepRow(number: "2", text: "Send the link only to people you trust. Anyone with the link can join and see your logs.")
             stepRow(number: "3", text: "Partner taps the link and accepts — done!")
             stepRow(number: "4", text: "All logs sync automatically, both ways")
 

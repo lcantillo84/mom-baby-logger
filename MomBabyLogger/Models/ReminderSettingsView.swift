@@ -137,7 +137,7 @@ struct ReminderSettingsView: View {
                     }
                     
                     Label {
-                        Text("You'll get a notification when it's time to feed again")
+                        Text("You'll get a notification after the time you chose")
                             .font(.caption)
                     } icon: {
                         Image(systemName: "3.circle.fill")
@@ -208,7 +208,7 @@ struct ReminderSettingsView: View {
         .alert("Notification Permission", isPresented: $showingPermissionAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("Please enable notifications in Settings to receive breast feeding reminders.")
+            Text("Please enable notifications in Settings to receive feeding reminders.")
         }
     }
     
@@ -250,7 +250,7 @@ struct ReminderSettingsView: View {
         let interval = date.timeIntervalSince(now)
         
         if interval < 0 {
-            return "Past due"
+            return "Already passed"
         }
         
         let hours = Int(interval) / 3600

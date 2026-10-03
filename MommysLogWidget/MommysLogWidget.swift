@@ -133,7 +133,7 @@ struct MommysLogWidget: Widget {
             MommysLogWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("Feeding Tracker")
-        .description("See how long since the last feeding and when the next one's due.")
+        .description("See how long since the last feeding and an estimate of the next one.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

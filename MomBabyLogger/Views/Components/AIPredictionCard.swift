@@ -5,23 +5,16 @@
 // ─────────────────────────────────────────────────────────────
 // WHAT THIS FILE DOES (plain English):
 //
-// This is the prediction card shown at the top of TodayView.
-// It shows two things:
+// This is the "Feeding Pattern" card shown near the top of TodayView.
+// It shows ONE row: "Estimated next feeding ~4:15 PM", which is simply the
+// average gap between the parent's own logged feedings this week, added to
+// the last feeding. Calculated on the device. No internet, no AI model.
 //
-// 1. PREDICTION ROW — "Next feeding ~4:15 PM"
-//    Calculated locally from feeding history. No internet needed.
-//    Always visible as long as 2+ feedings have been logged.
+// If there isn't enough feeding data, the card renders nothing.
 //
-// 2. ANOMALY ROW — "It's been longer than usual since the last feeding"
-//    Only appears when the gap since the last feeding exceeds the
-//    baby's personal average by more than 1 hour.
-//
-// If there's not enough feeding data (< 2 feedings), this entire
-// card returns EmptyView() and takes up zero space in TodayView.
-//
-// All AI-generated content is labeled with an [AI] badge so the
-// parent knows it's computed, not a fact. The disclaimer is always
-// visible below — pattern observation, not medical advice.
+// It is labeled "Estimate" and always shows a short disclaimer. It never
+// judges or interprets the timing (no "longer than usual" alerts).
+// That row was removed in 1.7.3 for compliance reasons.
 // ─────────────────────────────────────────────────────────────
 
 import SwiftUI
@@ -30,8 +23,8 @@ struct AIPredictionCard: View {
 
     let entries: [EntryWrapper]
 
-    // We call AIInsightsService methods directly (they're synchronous —
-    // no network call, no async needed for prediction/anomaly).
+    // We call AIInsightsService directly (synchronous, plain math,
+    // no network call).
     private let ai = AIInsightsService.shared
 
     var body: some View {
@@ -54,15 +47,15 @@ struct AIPredictionCard: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(AppTheme.Colors.primaryAction)
 
-                Text("AI Patterns")
+                Text("Feeding Pattern")
                     .font(AppTheme.Typography.labelMedium)
                     .fontWeight(.semibold)
                     .foregroundColor(AppTheme.Colors.primaryText)
 
                 Spacer()
 
-                // [AI] badge — signals this is generated content, not a fact
-                Text("AI")
+                // "Estimate" badge: signals this is a calculation, not a fact
+                Text("Estimate")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(AppTheme.Colors.primaryAction)
                     .padding(.horizontal, 6)
@@ -79,28 +72,15 @@ struct AIPredictionCard: View {
             // ── Prediction Row ─────────────────────────────────────────────
             predictionRow(predicted: predicted, avgInterval: avgInterval)
 
-            // ── Anomaly Row (conditional) ──────────────────────────────────
-            // Only shown when baby has gone significantly longer than usual.
-            // anomalyMessage() returns nil when everything is normal.
-            if let nudge = ai.anomalyMessage(from: entries) {
-                Divider()
-                    .padding(.horizontal, AppTheme.Spacing.md)
-                anomalyRow(message: nudge)
-            }
-
             Divider()
                 .padding(.horizontal, AppTheme.Spacing.md)
 
-            // ── Disclaimer — always visible ────────────────────────────────
-            // Three layers of safety:
-            // 1. System prompt constrains Claude (for the digest feature)
-            // 2. [AI] badge in the header signals generated content
-            // 3. This disclaimer text — always present regardless of content
+            // ── Disclaimer: always visible ────────────────────────────────
             HStack(spacing: AppTheme.Spacing.xs) {
                 Image(systemName: "stethoscope")
                     .font(.system(size: 10))
                     .foregroundColor(AppTheme.Colors.tertiaryText)
-                Text("Pattern estimate only — not medical advice.")
+                Text("Estimate from your own logs only, not medical advice.")
                     .font(AppTheme.Typography.labelSmall)
                     .foregroundColor(AppTheme.Colors.tertiaryText)
             }
@@ -129,44 +109,15 @@ struct AIPredictionCard: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 // The predicted time
-                Text("Next feeding ~\(predicted, style: .time)")
+                Text("Estimated next feeding ~\(predicted, style: .time)")
                     .font(AppTheme.Typography.bodyLarge)
                     .fontWeight(.medium)
                     .foregroundColor(AppTheme.Colors.primaryText)
 
                 // The average interval that drove the prediction
-                Text("avg interval \(ai.formatInterval(avgInterval)) across recent feedings")
+                Text("Average gap between your logged feedings this week: \(ai.formatInterval(avgInterval))")
                     .font(AppTheme.Typography.labelSmall)
                     .foregroundColor(AppTheme.Colors.secondaryText)
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, AppTheme.Spacing.md)
-        .padding(.vertical, AppTheme.Spacing.xs)
-    }
-
-    // ─── Anomaly Row ───────────────────────────────────────────────────────
-    private func anomalyRow(message: String) -> some View {
-        HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.10))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 15))
-                    .foregroundColor(.orange)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Longer than usual")
-                    .font(AppTheme.Typography.bodyMedium)
-                    .fontWeight(.medium)
-                    .foregroundColor(AppTheme.Colors.primaryText)
-                Text(message)
-                    .font(AppTheme.Typography.labelSmall)
-                    .foregroundColor(AppTheme.Colors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()

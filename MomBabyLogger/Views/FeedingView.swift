@@ -188,7 +188,7 @@ struct FeedingView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.right.circle.fill")
                             .foregroundColor(AppTheme.Colors.primaryAction)
-                        Text("Try: \(dataStore.lastBreastSide.displayName) breast")
+                        Text("Other side: \(dataStore.lastBreastSide.displayName) breast")
                             .font(AppTheme.Typography.bodyMedium)
                             .fontWeight(.semibold)
                             .foregroundColor(AppTheme.Colors.primaryAction)
@@ -204,7 +204,7 @@ struct FeedingView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "info.circle.fill")
                         .foregroundColor(AppTheme.Colors.primaryAction)
-                    Text("Start with either breast — the app will track which one to use next")
+                    Text("Start with either side. The app remembers which side you used last.")
                         .font(AppTheme.Typography.bodySmall)
                         .foregroundColor(AppTheme.Colors.secondaryText)
                     Spacer()

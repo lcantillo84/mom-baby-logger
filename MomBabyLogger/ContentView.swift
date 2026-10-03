@@ -42,6 +42,7 @@ struct ContentView: View {
                 }
         }
         .tint(AppTheme.Colors.tabActive)
+        .firstLaunchNotice()
         .onAppear {
             checkForAppUpdate()
         }
